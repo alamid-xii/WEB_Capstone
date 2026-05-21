@@ -1,722 +1,301 @@
-import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { useNavigate, useParams, useLocation } from 'react-router';
-import { toast } from 'sonner';
-import { validateHSEnrollmentForm, showValidationErrors } from '../utils/enrollmentValidation';
-import { uploadEnrollmentDocuments, getEnrollmentDocuments, deleteEnrollmentDocument } from '../services/enrollmentApi';
-import '../styles/enrollmentForm.css';
+﻿import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router";
+import { toast } from "sonner";
+import { CheckCircle2, Upload, X, Loader2, FileText, ArrowLeft } from "lucide-react";
+import { uploadEnrollmentDocuments } from "../services/enrollmentApi";
+const JHS_GRADES = ["Grade 7","Grade 8","Grade 9","Grade 10"];
+const SHS_GRADES = ["Grade 11","Grade 12"];
+const SHS_STRANDS = ["STEM","ABM","HUMSS","TVL","Sports","Arts and Design"];
+const HS_CREDS = [{key:"f138",label:"F-138"},{key:"f137a",label:"F-137-A"},{key:"cert",label:"Certificate"},{key:"f137e",label:"F-137-E"}];
+const API = "http://localhost:3000/api";
+const onlyDigits = (e) => { if (!/[0-9]/.test(e.key) && !["Backspace","Tab","ArrowLeft","ArrowRight","Delete"].includes(e.key)) e.preventDefault(); };
+const onlyLetters = (e) => { if (!/[a-zA-Z\s\-']/.test(e.key) && !["Backspace","Tab","ArrowLeft","ArrowRight","Delete"].includes(e.key)) e.preventDefault(); };
+function F({label,required,error,children}){return(<div className="flex flex-col gap-1"><label className="text-sm font-semibold text-[#001840]">{label}{required&&<span className="text-red-500 ml-1">*</span>}</label>{children}{error&&<p className="text-xs text-red-500 mt-0.5">{error}</p>}</div>);}
+function I({error,...p}){return(<input {...p} className={`w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 transition-all ${error?"border-red-400 focus:ring-red-200":"border-gray-200 focus:ring-[#102A71]/20 focus:border-[#102A71]"} bg-white text-[#001840]`}/>);}
+function S({error,children,...p}){return(<select {...p} className={`w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 transition-all bg-white text-[#001840] ${error?"border-red-400 focus:ring-red-200":"border-gray-200 focus:ring-[#102A71]/20 focus:border-[#102A71]"}`}>{children}</select>);}
+const SAVE_KEY = "hs_enrollment_draft";
 
-const API = 'http://localhost:3000/api';
-const getToken = () => localStorage.getItem('token');
-
-const JHS_GRADES = ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'];
-const SHS_GRADES = ['Grade 11', 'Grade 12'];
-const SHS_STRANDS = ['STEM', 'ABM', 'HUMSS', 'TVL', 'Sports', 'Arts and Design'];
-
-export function HSEnrollmentForm({ enrollmentId, readOnly = false }) {
-  const { id: paramId } = useParams();
-  const id = enrollmentId || paramId;
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // Make educationLevel stateful so it can be set from loaded enrollment data
-  const [educationLevel, setEducationLevel] = useState(
-    location.state?.educationLevel || 'JHS'
-  );
-
-  const [loading, setLoading] = useState(false);
-  const [savedId, setSavedId] = useState(id || null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  // Document upload state
-  const [docFiles, setDocFiles] = useState({});
-  const [uploadedDocs, setUploadedDocs] = useState([]);
-  const [docsUploading, setDocsUploading] = useState(false);
-
-  const gradeOptions = educationLevel === 'SHS' ? SHS_GRADES : JHS_GRADES;
-
-  const { register, handleSubmit, setValue, watch } = useForm({
-    defaultValues: {
-      studentNumber: ['', '', '', '', '', ''],
-      studentType: { new: false, old: false },
-      admissionCredentials: { f138: false, f137a: false, cert: false, f137e: false },
-      sscApplied: false
-    }
+export function HSEnrollmentForm({enrollmentId:propId,readOnly=false}){
+  const navigate=useNavigate();
+  const [step,setStep]=useState(()=>{
+    try { const s=localStorage.getItem(SAVE_KEY+"_step"); return s?parseInt(s):1; } catch(_){return 1;}
   });
+  const [errors,setErrors]=useState({});
+  const [submitting,setSubmitting]=useState(false);
+  const [showBackDialog,setShowBackDialog]=useState(false);
 
-  const selectedGrade = watch('gradeLevel');
-  const sscApplied = watch('sscApplied');
-  const isSHS = educationLevel === 'SHS';
-  const isGrade7 = selectedGrade === 'Grade 7';
+  const defaultForm = {educationLevel:"JHS",gradeLevel:"",strand:"",studentType:"New",academicYear:"2025-2026",dateEnrolled:"",studentNumber:["","","","","",""],lrn:"",familyName:"",firstName:"",middleName:"",sex:"",dateOfBirth:"",placeOfBirth:"",fatherName:"",fatherOccupation:"",motherName:"",motherOccupation:"",parentsAddress:"",guardianName:"",guardianOccupation:"",guardianAddress:"",guardianTelephone:"",grade6School:"",grade6SchoolAddress:"",grade6Section:"",grade6SYStart:"",grade6SYEnd:"",grade6Average:"",grade6Remarks:"",lastHSSchool:"",lastHSCurriculumYear:"",lastHSSection:"",lastHSSYStart:"",lastHSSYEnd:"",sscApplied:false,studentSignature:"",parentGuardianSignature:"",credentials:{},docFiles:{}};
 
-  useEffect(() => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    if (user.name) {
-      const parts = user.name.split(' ');
-      setValue('firstName', parts[0] || '');
-      setValue('familyName', parts[parts.length - 1] || '');
-    }
-    if (id) loadEnrollment(id);
-  }, [id]);
-
-  const loadEnrollment = async (eid) => {
+  // Load saved draft on mount (exclude docFiles — can't serialize File objects)
+  const [form,setF]=useState(()=>{
     try {
-      setLoading(true);
-      const res = await fetch(`${API}/enrollments/${eid}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
-      const data = await res.json();
-
-      // Populate form
-      if (data.educationLevel) setEducationLevel(data.educationLevel);
-      if (data.studentType) {
-        setValue('studentType.new', data.studentType === 'New');
-        setValue('studentType.old', data.studentType === 'Old');
-      }
-      if (data.studentNumber) {
-        data.studentNumber.split('').slice(0, 6).forEach((d, i) => setValue(`studentNumber.${i}`, d));
-      }
-      const fields = ['gradeLevel', 'strand', 'academicYear', 'dateEnrolled', 'lrn', 'sex',
-        'familyName', 'firstName', 'middleName', 'dateOfBirth', 'placeOfBirth',
-        'fatherName', 'fatherOccupation', 'motherName', 'motherOccupation',
-        'parentsAddress', 'guardianName', 'guardianOccupation', 'guardianAddress',
-        'guardianTelephone', 'grade6School', 'grade6SchoolAddress', 'grade6Section',
-        'grade6SYStart', 'grade6SYEnd', 'grade6Average', 'grade6Remarks',
-        'lastHSSchool', 'lastHSCurriculumYear', 'lastHSSection', 'lastHSSYStart',
-        'lastHSSYEnd', 'studentSignature', 'parentGuardianSignature'];
-      fields.forEach(f => { if (data[f]) setValue(f, data[f]); });
-
-      if (data.admissionCredentials && Array.isArray(data.admissionCredentials)) {
-        data.admissionCredentials.forEach(c => setValue(`admissionCredentials.${c}`, true));
-      }
-      if (data.sscApplied) setValue('sscApplied', true);
-      setSavedId(eid);
-
-      // Load existing uploaded documents
+      const saved = localStorage.getItem(SAVE_KEY);
+      if (saved) { const parsed = JSON.parse(saved); return {...defaultForm,...parsed,docFiles:{}}; }
+    } catch(_) {}
+    return defaultForm;
+  });
+  // Auto-save form to localStorage on every change (skip docFiles)
+  useEffect(()=>{
+    try {
+      const {docFiles,...saveable}=form;
+      localStorage.setItem(SAVE_KEY, JSON.stringify(saveable));
+    } catch(_){}
+  },[form]);
+  useEffect(()=>{ localStorage.setItem(SAVE_KEY+"_step", step); },[step]);
+  const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  const [previewModal, setPreviewModal] = useState(null); // { url, name, isPdf }
+  const [lrnTaken, setLrnTaken] = useState(false);
+  const lrnTimer = useRef(null);
+  const checkLrn = (val) => {
+    clearTimeout(lrnTimer.current);
+    if (val.length < 12) { setLrnTaken(false); return; }
+    lrnTimer.current = setTimeout(async () => {
       try {
-        const docs = await getEnrollmentDocuments(eid);
-        setUploadedDocs(Array.isArray(docs) ? docs : []);
-      } catch (_) {}
-    } catch (e) {
-      toast.error('Failed to load enrollment');
-    } finally {
-      setLoading(false);
-    }
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API}/enrollments/check-lrn?lrn=${val}`, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        setLrnTaken(data.taken);
+      } catch { setLrnTaken(false); }
+    }, 500);
   };
+  const isG7=form.gradeLevel==="Grade 7";
+  const isSHS=form.educationLevel==="SHS";
+  const grades=isSHS?SHS_GRADES:JHS_GRADES;
+  const total=5;
+  const docStep=5;
+  const labels=["Grade & Type","Personal Info","Family","Education","Documents"];
+  function validate(s){
+    const e={};
+    if(s===1){if(!form.gradeLevel)e.gradeLevel="Grade level is required";if(isSHS&&!form.strand)e.strand="Strand is required";}
+    if(s===2){if(!form.familyName.trim())e.familyName="Required";else if(/\d/.test(form.familyName))e.familyName="No numbers";if(!form.firstName.trim())e.firstName="Required";else if(/\d/.test(form.firstName))e.firstName="No numbers";if(!form.sex)e.sex="Required";if(!form.dateOfBirth)e.dateOfBirth="Required";}
+    if(s===docStep){const uploaded=HS_CREDS.filter(c=>form.docFiles[c.key]);if(uploaded.length===0)e.credentials="Please upload at least one document before submitting.";}
+    return e;
+  }
+  function stepFill(s){
+    if(s===1){const fields=[form.gradeLevel,isSHS?form.strand:null].filter(f=>f!==null);const filled=fields.filter(Boolean).length;return Math.round((filled/fields.length)*100);}
+    if(s===2){const fields=[form.familyName,form.firstName,form.sex,form.dateOfBirth];const filled=fields.filter(Boolean).length;return Math.round((filled/fields.length)*100);}
+    if(s===3){const fields=[form.fatherName,form.motherName,form.parentsAddress];const filled=fields.filter(Boolean).length;return Math.round((filled/fields.length)*100);}
+    if(s===4){const fields=[form.grade6School,form.grade6Average];const filled=fields.filter(Boolean).length;return Math.round((filled/fields.length)*100);}
+    if(s===docStep){const uploaded=HS_CREDS.filter(c=>form.docFiles[c.key]).length;return Math.round((uploaded/HS_CREDS.length)*100);}
+    return 0;
+  }
 
-  const onSubmit = async (data) => {
-    try {
-      setLoading(true);
-
-      // Validate form
-      const validationErrors = validateHSEnrollmentForm(data, educationLevel);
-      if (validationErrors.length > 0) {
-        showValidationErrors(validationErrors, toast);
-        setLoading(false);
-        return;
+  function goToStep(target){
+    if(target===step)return;
+    setErrors({});setStep(target);window.scrollTo({top:0,behavior:"smooth"});
+  }
+  function handleBack(){ setShowBackDialog(true); }
+  function clearDraft(){ localStorage.removeItem(SAVE_KEY); localStorage.removeItem(SAVE_KEY+"_step"); }
+  async function submit(){
+    const e=validate(docStep);if(Object.keys(e).length>0){setErrors(e);return;}
+    setSubmitting(true);
+    try{
+      const payload={educationLevel:form.educationLevel,gradeLevel:form.gradeLevel,strand:form.strand||null,studentType:form.studentType,studentNumber:form.studentNumber.join(""),academicYear:form.academicYear,dateEnrolled:form.dateEnrolled||null,lrn:form.lrn,familyName:form.familyName,firstName:form.firstName,middleName:form.middleName,sex:form.sex,dateOfBirth:form.dateOfBirth,placeOfBirth:form.placeOfBirth,fatherName:form.fatherName,fatherOccupation:form.fatherOccupation,motherName:form.motherName,motherOccupation:form.motherOccupation,parentsAddress:form.parentsAddress,guardianName:form.guardianName,guardianOccupation:form.guardianOccupation,guardianAddress:form.guardianAddress,guardianTelephone:form.guardianTelephone,grade6School:form.grade6School,grade6SchoolAddress:form.grade6SchoolAddress,grade6Section:form.grade6Section,grade6SYStart:form.grade6SYStart,grade6SYEnd:form.grade6SYEnd,grade6Average:form.grade6Average,grade6Remarks:form.grade6Remarks,lastHSSchool:form.lastHSSchool,lastHSCurriculumYear:form.lastHSCurriculumYear,lastHSSection:form.lastHSSection,lastHSSYStart:form.lastHSSYStart,lastHSSYEnd:form.lastHSSYEnd,sscApplied:form.sscApplied,studentSignature:form.studentSignature,parentGuardianSignature:form.parentGuardianSignature,admissionCredentials:HS_CREDS.filter(c=>form.docFiles[c.key]).map(c=>c.key),status:"submitted",enrollmentType:"first-time"};
+      const token=localStorage.getItem("token");
+      const res=await fetch(`${API}/enrollments`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(payload)});
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.message||"Failed");
+      const eid=data.enrollment?.id;
+      if(eid){
+        const files={};
+        Object.entries(form.docFiles).forEach(([k,f])=>{if(f)files[k]=f;});
+        if(Object.keys(files).length>0){
+          try{
+            await uploadEnrollmentDocuments(eid,files);
+          }catch(uploadErr){
+            // Delete the enrollment so student can retry cleanly
+            try{
+              await fetch(`${API}/enrollments/${eid}`,{method:"DELETE",headers:{Authorization:`Bearer ${localStorage.getItem("token")}`}});
+            }catch(_){}
+            throw new Error("Document upload failed: "+uploadErr.message+". Please try again.");
+          }
+        }
+        toast.success("Enrollment submitted successfully!",{description:`Enrollment ID: ${eid}`});
+        clearDraft();
+        navigate("/my-enrollments");
       }
+    }catch(err){toast.error(err.message||"Failed to submit enrollment");}
+    finally{setSubmitting(false);}
+  }
+  const pct=Math.round(((step-1)/(total-1))*100);
+  return(
+    <div className="min-h-screen bg-gradient-to-br from-[#FFFDF0] via-[#FFF9E6] to-[#FFFDF0]">
 
-      const payload = {
-        educationLevel,
-        gradeLevel: data.gradeLevel,
-        strand: data.strand || null,
-        studentType: data.studentType?.new ? 'New' : data.studentType?.old ? 'Old' : '',
-        studentNumber: data.studentNumber?.join('') || '',
-        academicYear: data.academicYear || '',
-        dateEnrolled: data.dateEnrolled || null,
-        admissionCredentials: data.admissionCredentials
-          ? Object.keys(data.admissionCredentials).filter(k => data.admissionCredentials[k])
-          : [],
-        sscApplied: data.sscApplied || false,
-        lrn: data.lrn || '',
-        familyName: data.familyName || '',
-        firstName: data.firstName || '',
-        middleName: data.middleName || '',
-        sex: data.sex || null,
-        dateOfBirth: data.dateOfBirth || null,
-        placeOfBirth: data.placeOfBirth || '',
-        fatherName: data.fatherName || '',
-        fatherOccupation: data.fatherOccupation || '',
-        motherName: data.motherName || '',
-        motherOccupation: data.motherOccupation || '',
-        parentsAddress: data.parentsAddress || '',
-        guardianName: data.guardianName || '',
-        guardianOccupation: data.guardianOccupation || '',
-        guardianAddress: data.guardianAddress || '',
-        guardianTelephone: data.guardianTelephone || '',
-        grade6School: data.grade6School || '',
-        grade6SchoolAddress: data.grade6SchoolAddress || '',
-        grade6Section: data.grade6Section || '',
-        grade6SYStart: data.grade6SYStart || '',
-        grade6SYEnd: data.grade6SYEnd || '',
-        grade6Average: data.grade6Average || '',
-        grade6Remarks: data.grade6Remarks || '',
-        lastHSSchool: data.lastHSSchool || '',
-        lastHSCurriculumYear: data.lastHSCurriculumYear || '',
-        lastHSSection: data.lastHSSection || '',
-        lastHSSYStart: data.lastHSSYStart || '',
-        lastHSSYEnd: data.lastHSSYEnd || '',
-        studentSignature: data.studentSignature || '',
-        parentGuardianSignature: data.parentGuardianSignature || '',
-        status: 'submitted'
-      };
-
-      const url = savedId ? `${API}/enrollments/${savedId}` : `${API}/enrollments`;
-      const method = savedId ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to save');
-      }
-
-      const result = await res.json();
-      const eid = result.enrollment?.id || savedId;
-      setSavedId(eid);
-      
-      // Upload any pending documents
-      const pendingFiles = Object.entries(docFiles).filter(([, f]) => f);
-      if (pendingFiles.length > 0) {
-        setDocsUploading(true);
-        try {
-          const uploaded = await uploadEnrollmentDocuments(eid, docFiles);
-          setUploadedDocs(uploaded.documents || []);
-          setDocFiles({});
-        } catch (_) {}
-        finally { setDocsUploading(false); }
-      }
-
-      // Show SSC-specific messages
-      if (result.sscQualified === true) {
-        toast.success('SSC Qualified!', { 
-          description: 'You qualify for the Special Science Class entrance exam. The registrar will contact you.' 
-        });
-      } else if (result.sscQualified === false) {
-        toast.warning('SSC Not Qualified', { 
-          description: 'Your Grade 6 average does not meet the SSC requirement (85+). You will be enrolled in Regular class.' 
-        });
-      } else {
-        toast.success('Enrollment saved!', { description: `Enrollment ID: ${eid}` });
-      }
-    } catch (e) {
-      toast.error(e.message || 'Failed to save enrollment');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    try {
-      setLoading(true);
-      await fetch(`${API}/enrollments/${savedId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
-      toast.success('Enrollment deleted');
-      setTimeout(() => navigate('/my-enrollments'), 1500);
-    } catch (e) {
-      toast.error('Failed to delete');
-    } finally {
-      setLoading(false);
-      setShowDeleteConfirm(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-[#FFFDF0] via-[#FFF9E6] to-[#FFFDF0] py-8">
-
-      {/* Action Bar */}
-      {!readOnly && (
-        <div className="max-w-[8.5in] mx-auto mb-6 px-4 no-print">
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <button type="button" onClick={() => navigate('/my-enrollments')}
-                className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 font-medium">
-                ← Back
-              </button>
-              {savedId && (
-                <>
-                  <button type="button" onClick={() => setShowDeleteConfirm(true)} disabled={loading}
-                    className="px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium disabled:opacity-50">
-                    Delete
-                  </button>
-                  <span className="text-sm text-gray-600">
-                    Enrollment ID: <span className="font-semibold text-[#102A71]">{savedId}</span>
-                  </span>
-                </>
-              )}
-              <button type="submit" form="hs-enrollment-form" disabled={loading}
-                className="px-6 py-2.5 bg-[#F5C400] text-[#001840] rounded-lg hover:bg-[#FFDC5F] font-semibold shadow-md ml-auto flex items-center gap-2 disabled:opacity-50">
-                {loading ? 'Saving...' : savedId ? 'Update Enrollment' : 'Save Enrollment'}
-              </button>
-            </div>
+      {/* File preview modal */}
+      {previewModal&&(
+        <div className="fixed inset-0 bg-black/70 z-50 flex flex-col">
+          <div className="flex items-center justify-between bg-[#001840] px-4 py-3 shrink-0">
+            <span className="text-white text-sm font-medium truncate max-w-xs">{previewModal.name}</span>
+            <button
+              onClick={()=>setPreviewModal(null)}
+              className="flex items-center gap-1.5 text-white bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+            >
+              <X size={14}/> Close
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            {previewModal.isPdf?(
+              <iframe src={previewModal.url} className="w-full h-full border-0" title={previewModal.name}/>
+            ):(
+              <div className="w-full h-full flex items-center justify-center p-4">
+                <img src={previewModal.url} alt={previewModal.name} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"/>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Delete Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print">
-          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md mx-4">
-            <h3 className="text-xl font-bold mb-4">Delete Enrollment?</h3>
-            <p className="text-gray-600 mb-6">This action cannot be undone.</p>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setShowDeleteConfirm(false)} className="px-5 py-2.5 border-2 border-gray-300 rounded-lg font-medium">Cancel</button>
-              <button onClick={handleDelete} disabled={loading} className="px-5 py-2.5 bg-red-600 text-white rounded-lg font-medium disabled:opacity-50">
-                {loading ? 'Deleting...' : 'Delete'}
-              </button>
+      {/* Save progress dialog */}
+      {showBackDialog&&(
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-bold text-[#001840] mb-2">Save your progress?</h3>
+            <p className="text-sm text-gray-600 mb-5">Your form data is automatically saved. When you come back, you can continue where you left off.</p>
+            <div className="flex gap-3">
+              <button onClick={()=>{clearDraft();navigate("/enroll");}} className="flex-1 py-2.5 border-2 border-red-300 text-red-600 rounded-xl text-sm font-semibold hover:bg-red-50 transition-all">Discard & Leave</button>
+              <button onClick={()=>{setShowBackDialog(false);navigate("/enroll");}} className="flex-1 py-2.5 bg-[#102A71] text-white rounded-xl text-sm font-semibold hover:bg-[#001840] transition-all">Save & Leave</button>
             </div>
+            <button onClick={()=>setShowBackDialog(false)} className="w-full mt-2 py-2 text-sm text-gray-400 hover:text-gray-600">Stay on form</button>
           </div>
         </div>
       )}
 
-      {/* Form */}
-      <div className={`max-w-6xl mx-auto px-4 ${readOnly ? 'pointer-events-none opacity-90' : ''}`}>
-        <div className="enrollment-form-container">
-          <form id="hs-enrollment-form" onSubmit={handleSubmit(onSubmit)} className="enrollment-form">
-
-            {/* ── HEADER ── */}
-            <table style={{ width: '100%', marginBottom: '10px', borderCollapse: 'collapse' }}>
-              <tbody><tr>
-                <td style={{ width: '60%', verticalAlign: 'middle' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <img src="/emc_logo_nobg.png" alt="EMC Logo" style={{ width: '58px', height: '58px', flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontWeight: 'bold', fontSize: '12pt' }}>EASTERN MINDORO COLLEGE, INC.</div>
-                      <div style={{ fontSize: '9pt' }}>Calapan City, Oriental Mindoro</div>
-                    </div>
+      <div className="bg-white border-b border-gray-100 shadow-sm sticky top-16 lg:top-20 z-40">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          {/* Back button */}
+          <button onClick={handleBack} className="flex items-center gap-1.5 text-sm text-[#102A71] hover:text-[#001840] font-medium mb-3 transition-colors">
+            <ArrowLeft size={15}/> Back to Level Selection
+          </button>
+          <div className="flex items-center justify-between mb-3 relative">
+            <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200 z-0"/>
+            <div className="absolute top-4 left-0 h-0.5 bg-[#102A71] z-0 transition-all duration-500" style={{width:`${pct}%`}}/>
+            {labels.map((lbl,i)=>{
+              const sid=i+1;
+              const active=sid===step;
+              const fill=stepFill(sid);
+              const complete=fill===100&&sid!==step;
+              // Circle style: active=yellow, complete=solid blue, partial=conic-gradient, empty=outline only
+              const circleStyle = complete
+                ? {background:"#102A71",border:"2px solid #102A71",color:"#fff"}
+                : active
+                  ? {background:"#F5C400",border:"2px solid #F5C400",color:"#001840"}
+                  : fill>0
+                    ? {background:`conic-gradient(#102A71 ${fill*3.6}deg, #e5e7eb ${fill*3.6}deg)`,border:"2px solid #102A71",color:"#102A71"}
+                    : {background:"#fff",border:"2px solid #d1d5db",color:"#9ca3af"};
+              return(
+                <div key={sid} onClick={()=>goToStep(sid)} className="flex flex-col items-center z-10 gap-1 cursor-pointer group">
+                  <div style={circleStyle} className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 group-hover:scale-110 group-hover:shadow-md">
+                    {/* Inner white circle for partial fill to show number */}
+                    {fill>0&&!complete&&!active?(
+                      <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center text-[10px] font-bold text-[#102A71]">{sid}</div>
+                    ):complete?<CheckCircle2 size={14}/>:sid}
                   </div>
-                </td>
-                <td style={{ width: '40%', textAlign: 'right', verticalAlign: 'middle' }}>
-                  <div style={{ fontWeight: 'bold', fontSize: '13pt', lineHeight: '1.3' }}>HIGH SCHOOL ENROLLMENT SLIP</div>
-                </td>
-              </tr></tbody>
-            </table>
-
-            {/* ── ROW 1: Grade Level + Student Number ── */}
-            <table style={{ width: '100%', marginBottom: '6px', borderCollapse: 'collapse' }}>
-              <tbody><tr>
-                <td style={{ width: '55%', verticalAlign: 'middle', paddingRight: '12px' }}>
-                  <span style={{ marginRight: '6px' }}>Grade Level / STRAND</span>
-                  <select {...register('gradeLevel')} className="underlined-input" style={{ width: '110px', marginRight: '8px' }}>
-                    <option value="">Select</option>
-                    {gradeOptions.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                  {isSHS && (
-                    <>
-                      <span style={{ marginRight: '6px' }}>/</span>
-                      <select {...register('strand')} className="underlined-input" style={{ width: '100px' }}>
-                        <option value="">Strand</option>
-                        {SHS_STRANDS.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </>
-                  )}
-                </td>
-                <td style={{ width: '45%', textAlign: 'right', verticalAlign: 'middle' }}>
-                  <span style={{ marginRight: '8px' }}>Student Number</span>
-                  <div className="student-number-boxes" style={{ display: 'inline-flex' }}>
-                    {[0,1,2,3,4,5].map(i => (
-                      <input key={i} type="text" maxLength="1"
-                        {...register(`studentNumber.${i}`)} className="student-number-box" />
-                    ))}
-                  </div>
-                </td>
-              </tr></tbody>
-            </table>
-
-            {/* ── ROW 2: New/Old + School Year + Date Enrolled ── */}
-            <table style={{ width: '100%', marginBottom: '8px', borderCollapse: 'collapse' }}>
-              <tbody><tr>
-                <td style={{ width: '55%', verticalAlign: 'middle' }}>
-                  <span style={{ marginRight: '4px' }}>New</span>
-                  <input type="checkbox" {...register('studentType.new')}
-                    style={{ marginRight: '14px', width: '14px', height: '14px', verticalAlign: 'middle' }} />
-                  <span style={{ marginRight: '4px' }}>Old</span>
-                  <input type="checkbox" {...register('studentType.old')}
-                    style={{ marginRight: '20px', width: '14px', height: '14px', verticalAlign: 'middle' }} />
-                  <span style={{ marginRight: '6px' }}>School Year:</span>
-                  <input type="text" {...register('academicYear')} className="underlined-input"
-                    style={{ width: '90px' }} placeholder="2025-2026" />
-                </td>
-                <td style={{ width: '45%', textAlign: 'right', verticalAlign: 'middle' }}>
-                  <span style={{ marginRight: '8px' }}>Date Enrolled</span>
-                  <input type="date" {...register('dateEnrolled')} className="underlined-input" style={{ width: '140px' }} />
-                </td>
-              </tr></tbody>
-            </table>
-
-            {/* ── CREDENTIALS ── */}
-            <div className="bordered-section" style={{ marginBottom: '0', padding: '6px 10px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <tbody><tr>
-                  <td style={{ fontWeight: 'bold', whiteSpace: 'nowrap', paddingRight: '16px', width: '1%' }}>
-                    CREDENTIAL SUBMITTED:
-                  </td>
-                  {[
-                    { key: 'f138', label: 'F138' },
-                    { key: 'f137a', label: 'F137A' },
-                    { key: 'cert', label: 'Cert' },
-                    { key: 'f137e', label: 'F137E' },
-                  ].map(c => (
-                    <td key={c.key} style={{ paddingRight: '28px', whiteSpace: 'nowrap' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-                        <input type="checkbox" {...register(`admissionCredentials.${c.key}`)}
-                          style={{ width: '14px', height: '14px', flexShrink: 0 }} />
-                        <span>{c.label}</span>
-                      </label>
-                    </td>
-                  ))}
-                </tr></tbody>
-              </table>
-            </div>
-
-            {/* ── DOCUMENT UPLOADS ── */}
-            {!readOnly && (
-              <HSCredentialUploadSection
-                credentials={[
-                  { key: 'f138', label: 'F-138' },
-                  { key: 'f137a', label: 'F-137-A' },
-                  { key: 'cert', label: 'Certificate' },
-                  { key: 'f137e', label: 'F-137-E' },
-                ]}
-                watchCredentials={watch('admissionCredentials')}
-                docFiles={docFiles}
-                setDocFiles={setDocFiles}
-                uploadedDocs={uploadedDocs}
-                setUploadedDocs={setUploadedDocs}
-                enrollmentId={savedId}
-                docsUploading={docsUploading}
-              />
-            )}
-
-            {/* ── SSC APPLICATION (Grade 7 only) ── */}
-            {isGrade7 && (
-              <div className="bordered-section" style={{ marginBottom: '0', backgroundColor: '#FFFDE7', padding: '8px 10px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-                  <input type="checkbox" {...register('sscApplied')}
-                    style={{ width: '16px', height: '16px', flexShrink: 0 }} />
-                  <span>Apply for Special Science Class (SSC)</span>
-                </label>
-                {sscApplied && (
-                  <div style={{ marginTop: '6px', paddingLeft: '24px', fontSize: '10pt', color: '#555' }}>
-                    Grade 6 General Average must be <strong>85 or higher</strong> to qualify for the SSC entrance exam.
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── PERSONAL INFO ── */}
-            <div className="bordered-section" style={{ marginBottom: '0', padding: '8px 10px' }}>
-
-              {/* 1. Name */}
-              <div style={{ marginBottom: '2px' }}>
-                <span><strong>1.</strong> Name: </span>
-                <input type="text" {...register('familyName')} className="underlined-input"
-                  style={{ width: '185px' }} placeholder="Family Name" />
-                <span style={{ margin: '0 4px' }}>,</span>
-                <input type="text" {...register('firstName')} className="underlined-input"
-                  style={{ width: '145px' }} placeholder="First Name" />
-                <span style={{ margin: '0 4px' }}></span>
-                <input type="text" {...register('middleName')} className="underlined-input"
-                  style={{ width: '115px' }} placeholder="Middle Name" />
-                <span style={{ margin: '0 16px 0 18px' }}>LRN:</span>
-                <input type="text" {...register('lrn')} className="underlined-input" style={{ width: '105px' }} />
-                <span style={{ margin: '0 8px 0 18px' }}>Sex:</span>
-                <select {...register('sex')} className="underlined-input" style={{ width: '78px' }}>
-                  <option value="">—</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                </select>
-              </div>
-              <div style={{ fontSize: '8.5pt', paddingLeft: '44px', marginBottom: '5px', color: '#555', display: 'flex' }}>
-                <span style={{ display: 'inline-block', width: '192px' }}>(Family Name)</span>
-                <span style={{ display: 'inline-block', width: '152px' }}>(First Name)</span>
-                <span>(Middle Name)</span>
-              </div>
-
-              {/* 2. Date/Place of Birth */}
-              <div style={{ marginBottom: '5px' }}>
-                <span><strong>2.</strong> Date of Birth: </span>
-                <input type="date" {...register('dateOfBirth')} className="underlined-input" style={{ width: '140px' }} />
-                <span style={{ margin: '0 10px 0 22px' }}>Place of Birth: </span>
-                <input type="text" {...register('placeOfBirth')} className="underlined-input"
-                  style={{ width: 'calc(100% - 400px)' }} />
-              </div>
-
-              {/* 3. Father */}
-              <div style={{ marginBottom: '5px' }}>
-                <span><strong>3.</strong> Father: </span>
-                <input type="text" {...register('fatherName')} className="underlined-input" style={{ width: '255px' }} />
-                <span style={{ margin: '0 10px 0 22px' }}>Occupation: </span>
-                <input type="text" {...register('fatherOccupation')} className="underlined-input"
-                  style={{ width: 'calc(100% - 400px)' }} />
-              </div>
-
-              {/* 4. Mother */}
-              <div style={{ marginBottom: '5px' }}>
-                <span><strong>4.</strong> Mother: </span>
-                <input type="text" {...register('motherName')} className="underlined-input" style={{ width: '255px' }} />
-                <span style={{ margin: '0 10px 0 22px' }}>Occupation: </span>
-                <input type="text" {...register('motherOccupation')} className="underlined-input"
-                  style={{ width: 'calc(100% - 400px)' }} />
-              </div>
-
-              {/* 5. Address of Parents */}
-              <div style={{ marginBottom: '5px' }}>
-                <span><strong>5.</strong> Address of Parents: </span>
-                <input type="text" {...register('parentsAddress')} className="underlined-input"
-                  style={{ width: 'calc(100% - 165px)' }} />
-              </div>
-
-              {/* 6. Guardian */}
-              <div style={{ marginBottom: '5px' }}>
-                <span><strong>6.</strong> Guardian if any: </span>
-                <input type="text" {...register('guardianName')} className="underlined-input" style={{ width: '215px' }} />
-                <span style={{ margin: '0 10px 0 22px' }}>Occupation: </span>
-                <input type="text" {...register('guardianOccupation')} className="underlined-input"
-                  style={{ width: 'calc(100% - 390px)' }} />
-              </div>
-
-              {/* 7. Address of Guardian */}
-              <div style={{ marginBottom: '5px' }}>
-                <span><strong>7.</strong> Address of Guardian: </span>
-                <input type="text" {...register('guardianAddress')} className="underlined-input" style={{ width: '195px' }} />
-                <span style={{ margin: '0 10px 0 22px' }}>Telephone/Mobile no. </span>
-                <input type="text" {...register('guardianTelephone')} className="underlined-input"
-                  style={{ width: 'calc(100% - 450px)' }} />
-              </div>
-
-              {/* 8. Grade VI School */}
-              <div style={{ marginBottom: '3px' }}>
-                <span><strong>8.</strong> School where you finish Grade VI </span>
-                <input type="text" {...register('grade6School')} className="underlined-input"
-                  style={{ width: 'calc(100% - 268px)' }} />
-              </div>
-              <div style={{ marginBottom: '3px', paddingLeft: '20px' }}>
-                <span>Located at </span>
-                <input type="text" {...register('grade6SchoolAddress')} className="underlined-input" style={{ width: '255px' }} />
-                <span style={{ margin: '0 8px 0 18px' }}>Grade Six, Section </span>
-                <input type="text" {...register('grade6Section')} className="underlined-input" style={{ width: '88px' }} />
-              </div>
-              <div style={{ marginBottom: '5px', paddingLeft: '20px' }}>
-                <span>School Year Graduated </span>
-                <input type="text" {...register('grade6SYStart')} className="underlined-input"
-                  style={{ width: '46px' }} placeholder="2020" />
-                <span style={{ margin: '0 3px' }}>-</span>
-                <input type="text" {...register('grade6SYEnd')} className="underlined-input"
-                  style={{ width: '46px' }} placeholder="2021" />
-                <span style={{ margin: '0 8px 0 18px' }}>General Average </span>
-                <input type="text" {...register('grade6Average')} className="underlined-input" style={{ width: '48px' }} />
-                <span style={{ margin: '0 8px 0 18px' }}>Remarks </span>
-                <input type="text" {...register('grade6Remarks')} className="underlined-input" style={{ width: '95px' }} />
-              </div>
-
-              {/* 9. Last HS Attended */}
-              <div style={{ marginBottom: '3px' }}>
-                <span><strong>9.</strong> Last High School Attended: </span>
-                <input type="text" {...register('lastHSSchool')} className="underlined-input"
-                  style={{ width: 'calc(100% - 228px)' }} />
-              </div>
-              <div style={{ paddingBottom: '2px', paddingLeft: '20px' }}>
-                <span>Curriculum Year (G7-G8-G9-G10-G11-G12) </span>
-                <input type="text" {...register('lastHSCurriculumYear')} className="underlined-input" style={{ width: '48px' }} />
-                <span style={{ margin: '0 8px 0 14px' }}>Section </span>
-                <input type="text" {...register('lastHSSection')} className="underlined-input" style={{ width: '78px' }} />
-                <span style={{ margin: '0 8px 0 14px' }}>School Year </span>
-                <input type="text" {...register('lastHSSYStart')} className="underlined-input" style={{ width: '46px' }} />
-                <span style={{ margin: '0 3px' }}>-</span>
-                <input type="text" {...register('lastHSSYEnd')} className="underlined-input" style={{ width: '46px' }} />
-              </div>
-            </div>
-
-            {/* ── PLEDGE ── */}
-            <div className="bordered-section" style={{ marginBottom: '0', fontSize: '10pt', lineHeight: '1.4' }}>
-              <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '6px', fontSize: '10.5pt' }}>
-                Ako ay nangangako sa aking pagpapatala na aking susundin ang lahat ng mga alituntunin at regulasyon ng paaralan upang
-                makatapos ng High School sa EASTERN MINDORO COLLEGE
-              </div>
-              <ol style={{ margin: '0', paddingLeft: '18px' }}>
-                {[
-                  'Ibibigay ko ang lahat ng kailangan sa pagpapatala at ang mga ito ay hindi ko na makukuha pagkatapos na ako ay makapagpatala sapagkat ang mga ito ay magiging bahagi at pag-aari ng paaralan.',
-                  'MAGBABAYAD AKO SA TAKDANG ORAS NG AKING MGA OBLIGASYON TULAD NG ENTRANCE FEE, TUITION FEE AT IBA PANG DAPAT BAYARAN. Umaayon din ako na magbabayad ng ano mang pagtataas sa mga obligasyon na sinang-ayunan ng DEPED at ito ay may bisa mula sa buwan ng Hunyo.',
-                  'Hindi ko pababayaan ang aking pag-aaral at gagawin ang mga kinakailangan ng bawat antas.',
-                  'Isusuot ko araw-araw ang itinalagang uniform ng paaralan at hindi rin papasok na mahaba o magulo ang buhok.',
-                  'Hindi ako papasok na huli, liliban sa klase o magbubulakbol sa oras ng klase.',
-                  'Hindi ako papasok na nakainom, lasing, tutulog o maninigarilyo sa paaralan.',
-                  'Hindi ako magdadala ng anumang patalim o manggugulo at sasali sa pag-aklas o demonstrasyon.',
-                  'Hindi ako magdadala o magpapaputok ng anumang klase ng paputok tulad ng rebentador sa paaralan.',
-                  'Hindi ako magdadala, iinom o kakain ng anumang ipinagbabawal na gamot o sasapi sa mga fraternies.',
-                  'Hindi ko hahamunin ng away ang aking mga kamag-aral at mga guro.',
-                  'Hindi ako magdadala, magnanakaw o maninira ng anumang gamit, maghuhuwad ng mga records o lulukuhin ang mga kamag-aral, guro at iba pa.',
-                  'Hindi ako magsusugal sa loob at labas ng paaralan, at magiging matapat, malinis, maayos, at masunurin.',
-                  "Ako'y makikiisa sa lahat ng gawaing pampaaralan.",
-                  'Lalagyan ko ng pabalat ang aking mga hiniram na aklat at isasauli bago matapos ang taong panuruan at babayaran ang anumang kasiraan at pagkawala nito.',
-                  'Handa akong sumama sa pagtataas ng watawat araw-araw at taos pusong aawitin ang Pambansang Awit ng Pilipinas at ang "EMC Loyalty Song".',
-                  'Handa akong tumanggap ng anumang nauukol na kaparusahan kapag sinuway ko ang mga nabanggi na kautusan.',
-                ].map((item, i) => (
-                  <li key={i} style={{ marginBottom: '2px' }}>{item}</li>
-                ))}
-              </ol>
-            </div>
-
-            {/* ── SIGNATURES ── */}
-            <div className="bordered-section" style={{ marginBottom: '0', padding: '14px 10px 10px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <tbody><tr>
-                  <td style={{ width: '45%', paddingRight: '20px', verticalAlign: 'bottom' }}>
-                    <input type="text" {...register('parentGuardianSignature')} className="underlined-input"
-                      style={{ width: '100%', marginBottom: '4px' }} placeholder="Parent/Guardian name" />
-                    <div style={{ textAlign: 'center', fontSize: '9.5pt', fontStyle: 'italic' }}>
-                      Pangalan at Lagda ng Magulang/Guardian
-                    </div>
-                  </td>
-                  <td style={{ width: '10%' }}></td>
-                  <td style={{ width: '45%', paddingLeft: '20px', verticalAlign: 'bottom' }}>
-                    <input type="text" {...register('studentSignature')} className="underlined-input"
-                      style={{ width: '100%', marginBottom: '4px' }} placeholder="Student name" />
-                    <div style={{ textAlign: 'center', fontSize: '9.5pt', fontStyle: 'italic' }}>
-                      Pangalan at Lagda ng Mag-aaral
-                    </div>
-                  </td>
-                </tr></tbody>
-              </table>
-            </div>
-
-            {/* ── FOOTER ── */}
-            <div className="form-footer" style={{ marginTop: '8px' }}>
-              <strong>E</strong>nriching <strong>M</strong>inds of <strong>C</strong>hampion
-            </div>
-
-          </form>
+                  <span className={`text-[9px] font-medium hidden sm:block text-center leading-tight max-w-[60px] transition-colors ${active?"text-[#001840]":complete?"text-[#102A71]":fill>0?"text-[#102A71]":"text-gray-400 group-hover:text-[#102A71]"}`}>{lbl}</span>
+                </div>
+              );
+            })}          </div>
+          <div className="w-full bg-gray-100 rounded-full h-1.5"><div className="bg-gradient-to-r from-[#102A71] to-[#F5C400] h-1.5 rounded-full transition-all duration-500" style={{width:`${pct}%`}}/></div>
+          <p className="text-xs text-gray-400 mt-1 text-right">Step {step} of {total}</p>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── HSCredentialUploadSection ─────────────────────────────────────────────────
-const HS_API_BASE = 'http://localhost:3000';
-
-function HSCredentialUploadSection({
-  credentials,
-  watchCredentials,
-  docFiles,
-  setDocFiles,
-  uploadedDocs,
-  setUploadedDocs,
-  enrollmentId,
-  docsUploading,
-}) {
-  const checkedCreds = credentials.filter(c => watchCredentials && watchCredentials[c.key] === true);
-
-  if (checkedCreds.length === 0) return null;
-
-  function handleFileChange(key, file) {
-    setDocFiles(prev => ({ ...prev, [key]: file || null }));
-  }
-
-  async function handleUploadSingle(key) {
-    if (!enrollmentId) {
-      toast.error('Please save the enrollment form first before uploading documents.');
-      return;
-    }
-    const file = docFiles[key];
-    if (!file) return;
-    try {
-      const result = await uploadEnrollmentDocuments(enrollmentId, { [key]: file });
-      setUploadedDocs(result.documents || []);
-      setDocFiles(prev => ({ ...prev, [key]: null }));
-      toast.success('Document uploaded successfully');
-    } catch (err) {
-      toast.error(err.message || 'Upload failed');
-    }
-  }
-
-  async function handleDeleteDoc(eid, docId) {
-    try {
-      await deleteEnrollmentDocument(eid, docId);
-      setUploadedDocs(prev => prev.filter(d => d.id !== docId));
-      toast.success('Document removed');
-    } catch (err) {
-      toast.error(err.message || 'Failed to remove document');
-    }
-  }
-
-  return (
-    <div className="no-print bg-amber-50 border border-amber-200 rounded-xl p-4 my-3">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-sm font-bold text-amber-800">📎 Upload Supporting Documents</span>
-        <span className="text-xs text-amber-600">(PDF, JPG, PNG — max 10MB each)</span>
-      </div>
-      {!enrollmentId && (
-        <p className="text-xs text-amber-700 bg-amber-100 rounded-lg px-3 py-2 mb-3">
-          Save the enrollment form first — documents will be uploaded automatically on save.
-        </p>
-      )}
-      <div className="space-y-3">
-        {checkedCreds.map(cred => {
-          const uploaded = uploadedDocs.find(d => d.documentType === cred.key);
-          const pendingFile = docFiles[cred.key];
-          return (
-            <div key={cred.key} className="bg-white rounded-lg border border-amber-100 p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-gray-700">{cred.label}</span>
-                {uploaded && (
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">✓ Uploaded</span>
-                )}
-              </div>
-              {uploaded ? (
-                <div className="flex items-center gap-3">
-                  <a
-                    href={`${HS_API_BASE}${uploaded.filePath}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-600 hover:underline flex items-center gap-1 truncate max-w-[200px]"
-                  >
-                    📄 {uploaded.originalName}
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteDoc(enrollmentId, uploaded.id)}
-                    className="text-xs text-red-500 hover:text-red-700 ml-auto shrink-0"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={e => handleFileChange(cred.key, e.target.files[0])}
-                    className="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-[#102A71] file:text-white hover:file:bg-[#001840] flex-1 min-w-0"
-                  />
-                  {pendingFile && enrollmentId && (
-                    <button
-                      type="button"
-                      onClick={() => handleUploadSingle(cred.key)}
-                      disabled={docsUploading}
-                      className="text-xs px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 shrink-0"
-                    >
-                      Upload
-                    </button>
-                  )}
-                  {pendingFile && !enrollmentId && (
-                    <span className="text-xs text-green-600 shrink-0">✓ Ready — will upload on save</span>
-                  )}
-                </div>
-              )}
+      <div className="max-w-4xl mx-auto px-4 pt-4 pb-8">
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold text-[#001840]">{labels[step-1]}</h2>
+          <p className="text-sm text-gray-500 mt-1">Step {step} of {total}</p>
+        </div>
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 sm:p-8">
+          {step===1&&(<div className="space-y-5">
+            <div className="flex gap-3 mb-2">{["JHS","SHS"].map(lvl=>(<button key={lvl} type="button" onClick={()=>{set("educationLevel",lvl);set("gradeLevel","");set("strand","");}} className={`px-6 py-2.5 rounded-xl border-2 font-semibold text-sm transition-all ${form.educationLevel===lvl?"border-[#102A71] bg-[#EEF2FF] text-[#001840]":"border-gray-200 text-gray-600 hover:border-gray-300"}`}>{lvl}</button>))}</div>
+            <F label="Grade Level" required error={errors.gradeLevel}><S value={form.gradeLevel} error={errors.gradeLevel} onChange={e=>{set("gradeLevel",e.target.value);set("strand","");}}><option value="">Select grade level</option>{grades.map(g=><option key={g} value={g}>{g}</option>)}</S></F>
+            {isSHS&&(<F label="Strand" required error={errors.strand}><S value={form.strand} error={errors.strand} onChange={e=>set("strand",e.target.value)}><option value="">Select strand</option>{SHS_STRANDS.map(s=><option key={s} value={s}>{s}</option>)}</S></F>)}
+            <div className="grid grid-cols-2 gap-4">
+              <F label="Student Type"><div className="flex gap-3">{["New","Old"].map(t=>(<button key={t} type="button" onClick={()=>set("studentType",t)} className={`px-4 py-2 rounded-xl border-2 text-sm font-medium transition-all ${form.studentType===t?"border-[#102A71] bg-[#EEF2FF] text-[#001840]":"border-gray-200 text-gray-600"}`}>{t}</button>))}</div></F>
+              <F label="School Year"><I value={form.academicYear} placeholder="2025-2026" onChange={e=>set("academicYear",e.target.value)}/></F>
             </div>
-          );
-        })}
+            <div className="grid grid-cols-2 gap-4">
+              <F label="Date Enrolled"><I type="date" value={form.dateEnrolled} onChange={e=>set("dateEnrolled",e.target.value)}/></F>
+            </div>
+          </div>)}
+          {step===2&&(<div className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <F label="Family Name" required error={errors.familyName}><I value={form.familyName} error={errors.familyName} placeholder="Family Name" onKeyDown={onlyLetters} onChange={e=>set("familyName",e.target.value)}/></F>
+              <F label="First Name" required error={errors.firstName}><I value={form.firstName} error={errors.firstName} placeholder="First Name" onKeyDown={onlyLetters} onChange={e=>set("firstName",e.target.value)}/></F>
+              <F label="Middle Name"><I value={form.middleName} placeholder="Middle Name" onKeyDown={onlyLetters} onChange={e=>set("middleName",e.target.value)}/></F>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <F label="LRN" error={lrnTaken ? "This LRN is already registered" : undefined}><I value={form.lrn} placeholder="12-digit LRN" maxLength={12} onKeyDown={onlyDigits} error={lrnTaken} onChange={e=>{set("lrn",e.target.value);checkLrn(e.target.value);}}/></F>
+              <F label="Sex" required error={errors.sex}><S value={form.sex} error={errors.sex} onChange={e=>set("sex",e.target.value)}><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></S></F>
+              <F label="Date of Birth" required error={errors.dateOfBirth}><I type="date" value={form.dateOfBirth} error={errors.dateOfBirth} onChange={e=>set("dateOfBirth",e.target.value)}/></F>
+            </div>
+            <F label="Place of Birth"><I value={form.placeOfBirth} placeholder="Place of birth" onChange={e=>set("placeOfBirth",e.target.value)}/></F>
+          </div>)}
+          {step===3&&(<div className="space-y-5">
+            <div><h3 className="text-sm font-bold text-[#001840] mb-3 pb-2 border-b border-gray-100">Father</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><F label="Full Name"><I value={form.fatherName} placeholder="Father name" onKeyDown={onlyLetters} onChange={e=>set("fatherName",e.target.value)}/></F><F label="Occupation"><I value={form.fatherOccupation} placeholder="Occupation" onChange={e=>set("fatherOccupation",e.target.value)}/></F></div></div>
+            <div><h3 className="text-sm font-bold text-[#001840] mb-3 pb-2 border-b border-gray-100">Mother</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><F label="Full Name"><I value={form.motherName} placeholder="Mother name" onKeyDown={onlyLetters} onChange={e=>set("motherName",e.target.value)}/></F><F label="Occupation"><I value={form.motherOccupation} placeholder="Occupation" onChange={e=>set("motherOccupation",e.target.value)}/></F></div></div>
+            <F label="Parents Address"><I value={form.parentsAddress} placeholder="Complete address" onChange={e=>set("parentsAddress",e.target.value)}/></F>
+            <div><h3 className="text-sm font-bold text-[#001840] mb-3 pb-2 border-b border-gray-100">Guardian (if any)</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><F label="Full Name"><I value={form.guardianName} placeholder="Guardian name" onKeyDown={onlyLetters} onChange={e=>set("guardianName",e.target.value)}/></F><F label="Occupation"><I value={form.guardianOccupation} placeholder="Occupation" onChange={e=>set("guardianOccupation",e.target.value)}/></F><F label="Address"><I value={form.guardianAddress} placeholder="Address" onChange={e=>set("guardianAddress",e.target.value)}/></F><F label="Telephone / Mobile"><I value={form.guardianTelephone} placeholder="09XXXXXXXXX" maxLength={11} onKeyDown={onlyDigits} onChange={e=>set("guardianTelephone",e.target.value)}/></F></div></div>
+          </div>)}
+          {step===4&&(<div className="space-y-5">
+            <div><h3 className="text-sm font-bold text-[#001840] mb-3 pb-2 border-b border-gray-100">Grade VI School</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><F label="School Name"><I value={form.grade6School} placeholder="School name" onChange={e=>set("grade6School",e.target.value)}/></F><F label="School Address"><I value={form.grade6SchoolAddress} placeholder="Address" onChange={e=>set("grade6SchoolAddress",e.target.value)}/></F><F label="Section"><I value={form.grade6Section} placeholder="Section" onChange={e=>set("grade6Section",e.target.value)}/></F><F label="General Average"><I value={form.grade6Average} placeholder="e.g. 88" maxLength={5} onKeyDown={onlyDigits} onChange={e=>set("grade6Average",e.target.value)}/></F><F label="SY Start"><I value={form.grade6SYStart} placeholder="2020" maxLength={4} onKeyDown={onlyDigits} onChange={e=>set("grade6SYStart",e.target.value)}/></F><F label="SY End"><I value={form.grade6SYEnd} placeholder="2021" maxLength={4} onKeyDown={onlyDigits} onChange={e=>set("grade6SYEnd",e.target.value)}/></F></div></div>
+            <div><h3 className="text-sm font-bold text-[#001840] mb-3 pb-2 border-b border-gray-100">Last High School Attended</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><F label="School Name"><I value={form.lastHSSchool} placeholder="School name" onChange={e=>set("lastHSSchool",e.target.value)}/></F><F label="Curriculum Year"><I value={form.lastHSCurriculumYear} placeholder="e.g. G7" onChange={e=>set("lastHSCurriculumYear",e.target.value)}/></F><F label="Section"><I value={form.lastHSSection} placeholder="Section" onChange={e=>set("lastHSSection",e.target.value)}/></F><F label="SY Start"><I value={form.lastHSSYStart} placeholder="2023" maxLength={4} onKeyDown={onlyDigits} onChange={e=>set("lastHSSYStart",e.target.value)}/></F><F label="SY End"><I value={form.lastHSSYEnd} placeholder="2024" maxLength={4} onKeyDown={onlyDigits} onChange={e=>set("lastHSSYEnd",e.target.value)}/></F></div></div>
+          </div>)}
+          {step===docStep&&(<div className="space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-[#001840] mb-1">Upload Required Documents <span className="text-red-500">*</span></p>
+              <p className="text-xs text-gray-500 mb-4">Upload a clear scan or photo of each document. At least one is required.</p>
+            </div>
+            {HS_CREDS.map(cred=>{
+              const file=form.docFiles[cred.key];
+              const previewUrl=file?URL.createObjectURL(file):null;
+              return(
+                <div key={cred.key} className={`p-4 rounded-xl border-2 transition-all ${file?"border-green-400 bg-green-50":"border-gray-200 bg-gray-50"}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-bold text-[#001840]">{cred.label}</span>
+                    {file&&<span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Uploaded</span>}
+                  </div>
+                  {file?(
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 border border-green-200">
+                        <FileText size={14} className="text-green-600 shrink-0"/>
+                        <span className="text-xs text-green-700 truncate flex-1">{file.name}</span>
+                        <button
+                          type="button"
+                          onClick={()=>setPreviewModal({url:previewUrl,name:file.name,isPdf:file.type==="application/pdf"})}
+                          className="text-xs text-[#102A71] hover:text-[#001840] font-semibold shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg border border-[#102A71]/30 hover:bg-[#EEF2FF] transition-all"
+                        >
+                          View
+                        </button>
+                        <button type="button" onClick={()=>set("docFiles",{...form.docFiles,[cred.key]:null})} className="text-red-400 hover:text-red-600 shrink-0"><X size={14}/></button>
+                      </div>
+                    </div>
+                  ):(
+                    <label className="flex items-center justify-between gap-2 cursor-pointer border border-gray-200 rounded-lg px-3 py-2.5 bg-white hover:bg-gray-50 transition-all">
+                      <span className="text-sm text-gray-500">Drag and Drop or Upload File</span>
+                      <Upload size={16} className="text-gray-400 shrink-0"/>
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={e=>{
+                        const f=e.target.files[0];
+                        if(!f)return;
+                        if(f.size>3*1024*1024){alert("File exceeds 3MB limit.");return;}
+                        set("docFiles",{...form.docFiles,[cred.key]:f});
+                      }}/>
+                    </label>
+                  )}
+                  <p className="text-[10px] text-gray-400 mt-2 italic">Formats: PDF, JPG, JPEG, PNG · Max file size: 3.0MB</p>
+                </div>
+              );
+            })}
+            {errors.credentials&&<p className="text-xs text-red-500">{errors.credentials}</p>}
+            {errors.docFiles&&<p className="text-xs text-red-500">{errors.docFiles}</p>}
+          </div>)}
+        </div>
+        {step===total&&(
+          <div className="flex justify-end mt-6">
+            <button onClick={submit} disabled={submitting} className="flex items-center gap-2 px-8 py-3 bg-[#F5C400] text-[#001840] rounded-xl font-bold hover:bg-[#FFDC5F] transition-all shadow-md disabled:opacity-60 disabled:cursor-not-allowed">
+              {submitting?<><Loader2 size={18} className="animate-spin"/> Submitting...</>:<><CheckCircle2 size={18}/> Submit Enrollment</>}
+            </button>
+          </div>
+        )}
       </div>
-      {docsUploading && (
-        <p className="text-xs text-amber-700 mt-2 animate-pulse">Uploading documents...</p>
-      )}
     </div>
   );
 }

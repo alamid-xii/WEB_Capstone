@@ -351,6 +351,7 @@ function CourseBadge({ course }) {
 const EMPTY_FORM = {
   code: '', course: 'BSIS', yearLevel: '1', semester: '1st Semester',
   schoolYear: '2025-2026', instructor: '', schedule: '', room: '', capacity: '40',
+  strand: '',
 };
 
 // ── Section Form Modal ────────────────────────────────────────────────────────
@@ -366,6 +367,7 @@ function SectionFormModal({ section, onClose, onSaved }) {
     schedule: section.schedule || '',
     room: section.room || '',
     capacity: String(section.capacity || '40'),
+    strand: section.strand || '',
   } : { ...EMPTY_FORM });
   const [loading, setLoading] = useState(false);
 
@@ -450,6 +452,20 @@ function SectionFormModal({ section, onClose, onSaved }) {
               </select>
             </div>
           </div>
+
+          {/* Strand — SHS only */}
+          {form.course === 'SHS' && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Strand</label>
+              <select value={form.strand} onChange={e => set('strand', e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#001840]/20 focus:border-[#001840] bg-white">
+                <option value="">— Select Strand —</option>
+                {['STEM','ABM','HUMSS','TVL','Sports','Arts and Design'].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Row 3: School Year + Capacity */}
           <div className="grid grid-cols-2 gap-3">
@@ -574,7 +590,6 @@ export function SectionManagement() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#001840]">Section Management</h2>
           <p className="text-sm text-gray-500 mt-0.5">
             {sections.length} sections &bull; {totalEnrolled} / {totalCapacity} students enrolled
           </p>
@@ -670,6 +685,7 @@ export function SectionManagement() {
                         </td>
                         <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                           {['JHS','SHS'].includes(s.course) ? `Grade ${s.yearLevel}` : `Year ${s.yearLevel}`}
+                          {s.strand && <span className="ml-1 text-xs text-purple-600 font-medium">· {s.strand}</span>}
                         </td>
                         <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{s.semester}</td>
                         <td className="px-4 py-3 text-gray-500">{s.schoolYear}</td>

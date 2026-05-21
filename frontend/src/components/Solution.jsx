@@ -1,4 +1,4 @@
-import { MessageSquare, Camera, Map, ClipboardCheck } from "lucide-react";
+﻿import { MessageSquare, Camera, Map, ClipboardCheck } from "lucide-react";
 import { Link } from "react-router";
 
 export function Solution() {
@@ -11,8 +11,8 @@ export function Solution() {
     },
     {
       icon: Camera,
-      title: "Augmented Reality Campus Navigation",
-      description: "Real-time visual directions to offices, buildings, and facilities using your smartphone camera",
+      title: "360° Virtual Campus Tour",
+      description: "Explore campus buildings, offices, and facilities through immersive 360° virtual tour images",
       color: "bg-[#FFDC5F]"
     },
     {
@@ -38,10 +38,10 @@ export function Solution() {
             <span className="text-[#102A71] font-semibold">The Solution</span>
           </div>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#001840] mb-6">
-            What is UniNav?
+            What is GabAI?
           </h2>
           <p className="text-lg text-gray-700">
-            An all-in-one digital admission companion for Eastern Mindoro College that combines artificial intelligence with augmented reality
+            An all-in-one digital admission companion for Eastern Mindoro College that combines artificial intelligence with 360° virtual campus tour technology
           </p>
         </div>
 
@@ -74,7 +74,7 @@ export function Solution() {
             Experience the Future of College Admissions
           </h3>
           <p className="text-[#FFDC5F] text-lg mb-8 max-w-2xl mx-auto">
-            UniNav combines cutting-edge technology with student-centered design to make your enrollment journey seamless
+            GabAI combines cutting-edge technology with student-centered design to make your enrollment journey seamless
           </p>
           <Link to="/enrollment-form" className="inline-block">
             <button className="bg-[#F5C400] hover:bg-[#FFDC5F] text-[#001840] px-8 py-4 rounded-lg font-semibold transition-colors duration-200">

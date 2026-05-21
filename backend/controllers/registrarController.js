@@ -1,6 +1,7 @@
+﻿import { sendEnrollmentVerifiedEmail, sendEnrollmentReturnedEmail, sendSSCExamScheduledEmail, sendSSCResultEmail, sendEnrollmentApprovedEmail } from '../services/emailService.js';
 import { sequelize } from '../models/db.js';
 
-// ── Dashboard stats (registrar-specific) ─────────────────────────────────────
+// ── Dashboard stats ───────────────────────────────────────────────────────────
 export const getRegistrarStats = async (req, res) => {
   try {
     const [[summary]] = await sequelize.query(`
@@ -10,20 +11,21 @@ export const getRegistrarStats = async (req, res) => {
         SUM(CASE WHEN status = 'pending_exam' THEN 1 ELSE 0 END) as pending_exam,
         SUM(CASE WHEN status = 'verified'     THEN 1 ELSE 0 END) as verified,
         SUM(CASE WHEN status = 'returned'     THEN 1 ELSE 0 END) as returned,
+        SUM(CASE WHEN status = 'approved'     THEN 1 ELSE 0 END) as approved,
         SUM(CASE WHEN educationLevel = 'JHS'     THEN 1 ELSE 0 END) as jhs,
         SUM(CASE WHEN educationLevel = 'SHS'     THEN 1 ELSE 0 END) as shs,
         SUM(CASE WHEN educationLevel = 'College' THEN 1 ELSE 0 END) as college
       FROM enrollment_records
-      WHERE status IN ('submitted', 'pending_exam', 'verified', 'returned')
+      WHERE status IN ('submitted', 'pending_exam', 'verified', 'returned', 'approved')
     `);
 
     const [recentActivity] = await sequelize.query(`
       SELECT er.id, er.firstName, er.familyName, er.educationLevel,
              er.course, er.gradeLevel, er.status, er.verified_at, er.updatedAt,
-             u.email as userEmail
+             u.name as user_name, u.email as userEmail
       FROM enrollment_records er
       LEFT JOIN users u ON er.userId = u.id
-      WHERE er.status IN ('submitted', 'pending_exam', 'verified', 'returned')
+      WHERE er.status IN ('submitted', 'pending_exam', 'verified', 'returned', 'approved', 'enrolled')
       ORDER BY er.updatedAt DESC
       LIMIT 10
     `);
@@ -33,7 +35,7 @@ export const getRegistrarStats = async (req, res) => {
         submitted:    Number(summary?.submitted)    || 0,
         pending_exam: Number(summary?.pending_exam) || 0,
         verified:     Number(summary?.verified)     || 0,
-        returned:     Number(summary?.returned)     || 0,
+        approved:     Number(summary?.approved)     || 0,
         jhs:          Number(summary?.jhs)          || 0,
         shs:          Number(summary?.shs)          || 0,
         college:      Number(summary?.college)      || 0,
@@ -46,7 +48,7 @@ export const getRegistrarStats = async (req, res) => {
   }
 };
 
-// ── Get enrollments for registrar (submitted + pending_exam + verified + returned) ──
+// ── Get enrollments for registrar ─────────────────────────────────────────────
 export const getRegistrarEnrollments = async (req, res) => {
   try {
     const { status, educationLevel, search } = req.query;
@@ -63,8 +65,7 @@ export const getRegistrarEnrollments = async (req, res) => {
       query += ` AND er.status = ?`;
       params.push(status);
     } else {
-      // Default: show only what registrar needs to act on
-      query += ` AND er.status IN ('submitted', 'pending_exam', 'verified', 'returned')`;
+      query += ` AND er.status IN ('submitted', 'pending_exam', 'verified', 'returned', 'approved')`;
     }
 
     if (educationLevel && educationLevel !== 'all') {
@@ -122,10 +123,64 @@ export const verifyEnrollment = async (req, res) => {
       { replacements: [id] }
     );
 
+    // Send verified email notification
+    try {
+      const [[user]] = await sequelize.query('SELECT * FROM users WHERE id = ?', { replacements: [updated.userId] });
+      if (user) await sendEnrollmentVerifiedEmail(user, updated);
+    } catch (_) {}
+
     res.json({ message: 'Enrollment verified successfully', enrollment: updated });
   } catch (error) {
     console.error('Verify enrollment error:', error);
     res.status(500).json({ error: 'Failed to verify enrollment' });
+  }
+};
+
+// ── Approve enrollment (verified → approved) ──────────────────────────────────
+export const approveEnrollment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { remarks } = req.body;
+    const registrarId = req.user.id;
+
+    const [[enrollment]] = await sequelize.query(
+      'SELECT * FROM enrollment_records WHERE id = ?',
+      { replacements: [id] }
+    );
+
+    if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
+
+    if (!['verified', 'submitted', 'returned'].includes(enrollment.status)) {
+      return res.status(400).json({ error: `Cannot approve enrollment with status: ${enrollment.status}` });
+    }
+
+    await sequelize.query(
+      `UPDATE enrollment_records
+       SET status = 'enrolled',
+           registrar_remarks = ?,
+           verified_by = ?,
+           verified_at = datetime('now'),
+           approved_by = ?,
+           approved_at = datetime('now'),
+           updatedAt = datetime('now')
+       WHERE id = ?`,
+      { replacements: [remarks || null, registrarId, registrarId, id] }
+    );
+
+    const [[updated]] = await sequelize.query(
+      'SELECT * FROM enrollment_records WHERE id = ?',
+      { replacements: [id] }
+    );
+
+    try {
+      const [[user]] = await sequelize.query('SELECT * FROM users WHERE id = ?', { replacements: [updated.userId] });
+      if (user) await sendEnrollmentApprovedEmail(user, updated);
+    } catch (_) {}
+
+    res.json({ message: 'Enrollment approved successfully', enrollment: updated });
+  } catch (error) {
+    console.error('Approve enrollment error:', error);
+    res.status(500).json({ error: 'Failed to approve enrollment' });
   }
 };
 
@@ -167,6 +222,12 @@ export const returnEnrollment = async (req, res) => {
       { replacements: [id] }
     );
 
+    // Send returned email notification
+    try {
+      const [[user]] = await sequelize.query('SELECT * FROM users WHERE id = ?', { replacements: [updated.userId] });
+      if (user) await sendEnrollmentReturnedEmail(user, updated, remarks);
+    } catch (_) {}
+
     res.json({ message: 'Enrollment returned to student', enrollment: updated });
   } catch (error) {
     console.error('Return enrollment error:', error);
@@ -188,27 +249,13 @@ export const scheduleSSCExam = async (req, res) => {
     );
 
     if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-
-    if (enrollment.educationLevel !== 'JHS') {
-      return res.status(400).json({ error: 'SSC exam only applies to JHS enrollments' });
-    }
-
-    if (!enrollment.sscApplied) {
-      return res.status(400).json({ error: 'Student did not apply for SSC' });
-    }
-
-    if (!enrollment.sscQualified) {
-      return res.status(400).json({ error: `Student is not qualified for SSC. Grade 6 average is ${enrollment.grade6Average} (minimum 85 required)` });
-    }
-
-    if (!['submitted', 'verified'].includes(enrollment.status)) {
-      return res.status(400).json({ error: `Cannot schedule exam for enrollment with status: ${enrollment.status}` });
-    }
+    if (enrollment.educationLevel !== 'JHS') return res.status(400).json({ error: 'SSC exam only applies to JHS enrollments' });
+    if (!enrollment.sscApplied) return res.status(400).json({ error: 'Student did not apply for SSC' });
+    if (enrollment.status !== 'pending_exam') return res.status(400).json({ error: `Cannot schedule exam for enrollment with status: ${enrollment.status}` });
 
     await sequelize.query(
       `UPDATE enrollment_records
-       SET status = 'pending_exam',
-           sscExamDate = ?,
+       SET sscExamDate = ?,
            sscPassingScore = ?,
            updatedAt = datetime('now')
        WHERE id = ?`,
@@ -219,6 +266,12 @@ export const scheduleSSCExam = async (req, res) => {
       'SELECT * FROM enrollment_records WHERE id = ?',
       { replacements: [id] }
     );
+
+    // Send SSC exam scheduled email
+    try {
+      const [[user]] = await sequelize.query('SELECT * FROM users WHERE id = ?', { replacements: [updated.userId] });
+      if (user) await sendSSCExamScheduledEmail(user, updated);
+    } catch (_) {}
 
     res.json({ message: 'SSC exam scheduled', enrollment: updated });
   } catch (error) {
@@ -243,10 +296,7 @@ export const recordSSCResult = async (req, res) => {
     );
 
     if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-
-    if (enrollment.status !== 'pending_exam') {
-      return res.status(400).json({ error: 'Enrollment is not pending an SSC exam' });
-    }
+    if (enrollment.status !== 'pending_exam') return res.status(400).json({ error: 'Enrollment is not pending an SSC exam' });
 
     const score = parseFloat(examScore);
     const passing = parseFloat(enrollment.sscPassingScore) || 75;
@@ -267,6 +317,12 @@ export const recordSSCResult = async (req, res) => {
       'SELECT * FROM enrollment_records WHERE id = ?',
       { replacements: [id] }
     );
+
+    // Send SSC result email
+    try {
+      const [[user]] = await sequelize.query('SELECT * FROM users WHERE id = ?', { replacements: [updated.userId] });
+      if (user) await sendSSCResultEmail(user, updated);
+    } catch (_) {}
 
     res.json({
       message: passed
@@ -315,6 +371,7 @@ export const evaluateTOR = async (req, res) => {
       { replacements: [id] }
     );
 
+    // No email for TOR evaluation — it's an internal registrar action
     res.json({ message: 'TOR evaluated successfully', enrollment: updated });
   } catch (error) {
     console.error('TOR evaluation error:', error);

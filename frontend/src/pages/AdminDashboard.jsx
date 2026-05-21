@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+﻿import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
 import {
   MapPin, Users, MessageSquare, FileText, BarChart3, Settings, LogOut,
@@ -190,7 +190,7 @@ export function AdminDashboard() {
                 <MapPin className="w-6 h-6 text-[#001840]" />
               </div>
               <div>
-                <h1 className="font-bold text-lg">UniNav Admin</h1>
+                <h1 className="font-bold text-lg">GabAI Admin</h1>
                 <p className="text-xs text-[#FFDC5F]">Eastern Mindoro College</p>
               </div>
             </div>
@@ -325,10 +325,9 @@ const ADMIN_STATUS_CFG = {
   draft:             { label: 'Draft',             color: 'bg-gray-100 text-gray-700' },
   submitted:         { label: 'Submitted',          color: 'bg-blue-100 text-blue-700' },
   pending_exam:      { label: 'Pending Exam',       color: 'bg-yellow-100 text-yellow-700' },
-  verified:          { label: 'Verified',           color: 'bg-purple-100 text-purple-700' },
   returned:          { label: 'Returned',           color: 'bg-orange-100 text-orange-700' },
-  approved:          { label: 'Approved',           color: 'bg-green-100 text-green-700' },
-  subjects_enrolled: { label: 'Subjects Enrolled',  color: 'bg-teal-100 text-teal-700' },
+  approved:          { label: 'Enrolled',           color: 'bg-emerald-100 text-emerald-700' },
+  subjects_enrolled: { label: 'Enrolled',           color: 'bg-emerald-100 text-emerald-700' },
   enrolled:          { label: 'Enrolled',           color: 'bg-emerald-100 text-emerald-700' },
   rejected:          { label: 'Rejected',           color: 'bg-red-100 text-red-700' },
 };
@@ -349,11 +348,6 @@ function EnrollmentsView() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [levelFilter, setLevelFilter] = useState('all');
   const [page, setPage] = useState(1);
-  const [approvalModal, setApprovalModal] = useState(null); // { id, action: 'approve'|'reject' }
-  const [comment, setComment] = useState('');
-  const [actionLoading, setActionLoading] = useState(false);
-  const [selected, setSelected] = useState(new Set());
-  const [bulkLoading, setBulkLoading] = useState(false);
 
   const tok = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' });
 
@@ -373,13 +367,15 @@ function EnrollmentsView() {
 
   useEffect(() => { loadEnrollments(); }, []);
 
-  // Filter
   const filtered = enrollments.filter(e => {
     const matchSearch = !search ||
       `${e.firstName} ${e.familyName}`.toLowerCase().includes(search.toLowerCase()) ||
       (e.studentNumber || '').includes(search) ||
       (e.course || '').toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'all' || e.status === statusFilter;
+    const matchStatus = statusFilter === 'all' || 
+      (statusFilter === 'enrolled' 
+        ? ['approved','subjects_enrolled','enrolled'].includes(e.status)
+        : e.status === statusFilter);
     const matchLevel = levelFilter === 'all' || e.educationLevel === levelFilter;
     return matchSearch && matchStatus && matchLevel;
   });
@@ -387,88 +383,10 @@ function EnrollmentsView() {
   const totalPages = Math.ceil(filtered.length / ENROLL_PAGE_SIZE);
   const paginated = filtered.slice((page - 1) * ENROLL_PAGE_SIZE, page * ENROLL_PAGE_SIZE);
 
-  async function handleApprove() {
-    if (!approvalModal) return;
-    setActionLoading(true);
-    try {
-      const endpoint = approvalModal.action === 'approve' ? 'approve' : 'reject';
-      if (approvalModal.action === 'reject' && !comment.trim()) {
-        toast.error('Rejection reason is required');
-        setActionLoading(false);
-        return;
-      }
-      const res = await fetch(`http://localhost:3000/api/admin/enrollments/${approvalModal.id}/${endpoint}`, {
-        method: 'POST', headers: tok(), body: JSON.stringify({ comment }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      toast.success(approvalModal.action === 'approve' ? 'Enrollment approved' : 'Enrollment rejected');
-      setApprovalModal(null);
-      setComment('');
-      loadEnrollments();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  async function handleBulkApprove() {
-    const ids = selected.size > 0 ? Array.from(selected) : null;
-    const count = ids ? ids.length : counts.verified;
-    if (count === 0) { toast.error('No verified enrollments to approve'); return; }
-    if (!confirm(`Approve ${count} verified enrollment(s)?`)) return;
-    setBulkLoading(true);
-    try {
-      const res = await fetch('http://localhost:3000/api/admin/enrollments/bulk-approve', {
-        method: 'POST', headers: tok(), body: JSON.stringify(ids ? { ids } : {}),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      toast.success(data.message);
-      setSelected(new Set());
-      loadEnrollments();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setBulkLoading(false);
-    }
-  }
-
-  // toggle selection helpers
-  const verifiedOnPage = paginated.filter(e => e.status === 'verified');
-  const allPageVerifiedSelected = verifiedOnPage.length > 0 && verifiedOnPage.every(e => selected.has(e.id));
-
-  function toggleSelect(id) {
-    setSelected(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  function toggleSelectAllVerified() {
-    if (allPageVerifiedSelected) {
-      setSelected(prev => {
-        const next = new Set(prev);
-        verifiedOnPage.forEach(e => next.delete(e.id));
-        return next;
-      });
-    } else {
-      setSelected(prev => {
-        const next = new Set(prev);
-        verifiedOnPage.forEach(e => next.add(e.id));
-        return next;
-      });
-    }
-  }
-
-  // Stats
   const counts = {
     total: enrollments.length,
-    verified: enrollments.filter(e => e.status === 'verified').length,
+    enrolled: enrollments.filter(e => ['approved','subjects_enrolled','enrolled'].includes(e.status)).length,
     submitted: enrollments.filter(e => e.status === 'submitted').length,
-    approved: enrollments.filter(e => e.status === 'approved').length,
     rejected: enrollments.filter(e => e.status === 'rejected').length,
   };
 
@@ -478,9 +396,8 @@ function EnrollmentsView() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: 'Total', value: counts.total, color: 'bg-[#001840] text-white' },
-          { label: 'Needs Approval', value: counts.verified, color: 'bg-purple-600 text-white' },
+          { label: 'Enrolled', value: counts.enrolled, color: 'bg-green-600 text-white' },
           { label: 'Submitted', value: counts.submitted, color: 'bg-blue-600 text-white' },
-          { label: 'Approved', value: counts.approved, color: 'bg-green-600 text-white' },
           { label: 'Rejected', value: counts.rejected, color: 'bg-red-600 text-white' },
         ].map(c => (
           <div key={c.label} className={`${c.color} rounded-xl p-4`}>
@@ -501,7 +418,11 @@ function EnrollmentsView() {
         <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
           className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#001840]/20 appearance-none bg-white">
           <option value="all">All Statuses</option>
-          {Object.entries(ADMIN_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          <option value="submitted">Submitted</option>
+          <option value="pending_exam">Pending Exam</option>
+          <option value="enrolled">Enrolled</option>
+          <option value="returned">Returned</option>
+          <option value="rejected">Rejected</option>
         </select>
         <select value={levelFilter} onChange={e => { setLevelFilter(e.target.value); setPage(1); }}
           className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#001840]/20 appearance-none bg-white">
@@ -513,20 +434,6 @@ function EnrollmentsView() {
         <button onClick={loadEnrollments} className="px-3 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50 transition-colors text-gray-600">
           Refresh
         </button>
-        {counts.verified > 0 && (
-          <button
-            onClick={handleBulkApprove}
-            disabled={bulkLoading}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-60 flex items-center gap-2"
-          >
-            <CheckCircle size={14} />
-            {bulkLoading
-              ? 'Approving...'
-              : selected.size > 0
-                ? `Approve Selected (${selected.size})`
-                : `Approve All Verified (${counts.verified})`}
-          </button>
-        )}
       </div>
 
       {/* Table */}
@@ -547,13 +454,6 @@ function EnrollmentsView() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-50 bg-gray-50/50">
-                    <th className="px-3 py-3 w-8">
-                      <input type="checkbox"
-                        checked={allPageVerifiedSelected}
-                        onChange={toggleSelectAllVerified}
-                        title="Select all verified on this page"
-                        className="w-4 h-4 rounded border-gray-300 accent-[#001840]" />
-                    </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Student</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Level / Course</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Type</th>
@@ -564,15 +464,7 @@ function EnrollmentsView() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {paginated.map(e => (
-                    <tr key={e.id} className={`hover:bg-gray-50/50 transition-colors ${selected.has(e.id) ? 'bg-green-50/40' : ''}`}>
-                      <td className="px-3 py-3">
-                        {e.status === 'verified' && (
-                          <input type="checkbox"
-                            checked={selected.has(e.id)}
-                            onChange={() => toggleSelect(e.id)}
-                            className="w-4 h-4 rounded border-gray-300 accent-[#001840]" />
-                        )}
-                      </td>
+                    <tr key={e.id} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-5 py-3">
                         <p className="font-medium text-gray-800">{e.firstName} {e.familyName}</p>
                         <p className="text-xs text-gray-400">{e.studentNumber || `#${e.id}`}</p>
@@ -582,7 +474,7 @@ function EnrollmentsView() {
                       </td>
                       <td className="px-5 py-3">
                         <p className="text-gray-700">
-                          {e.educationLevel === 'College' ? e.course : `${e.educationLevel} Grade ${e.gradeLevel}`}
+                          {e.educationLevel === 'College' ? e.course : `${e.educationLevel} ${e.gradeLevel || ''}`}
                         </p>
                         {(e.major || e.strand) && <p className="text-xs text-gray-400">{e.major || e.strand}</p>}
                       </td>
@@ -601,25 +493,10 @@ function EnrollmentsView() {
                         {e.createdAt ? new Date(e.createdAt).toLocaleDateString() : '—'}
                       </td>
                       <td className="px-5 py-3">
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => navigate(`/enrollment/${e.id}`, { state: { fromAdmin: true } })}
-                            className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors" title="View">
-                            <Eye size={14} />
-                          </button>
-                          {/* Admin can only approve/reject VERIFIED enrollments */}
-                          {e.status === 'verified' && (
-                            <>
-                              <button onClick={() => { setApprovalModal({ id: e.id, action: 'approve' }); setComment(''); }}
-                                className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Approve">
-                                <CheckCircle size={14} />
-                              </button>
-                              <button onClick={() => { setApprovalModal({ id: e.id, action: 'reject' }); setComment(''); }}
-                                className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Reject">
-                                <XCircle size={14} />
-                              </button>
-                            </>
-                          )}
-                        </div>
+                        <button onClick={() => navigate(`/enrollment/${e.id}`, { state: { fromAdmin: true } })}
+                          className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors" title="View">
+                          <Eye size={14} />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -627,7 +504,6 @@ function EnrollmentsView() {
               </table>
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-5 py-3 border-t border-gray-50 bg-gray-50/30">
                 <p className="text-xs text-gray-400">
@@ -654,157 +530,184 @@ function EnrollmentsView() {
           </>
         )}
       </div>
-
-      {/* Notice about workflow */}
-      <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700">
-        <span className="font-semibold">Workflow:</span> Registrar verifies documents first → enrollment becomes <span className="font-semibold">Verified</span> → Admin approves or rejects here.
-      </div>
-
-      {/* Approve/Reject Modal */}
-      {approvalModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setApprovalModal(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md z-10">
-            <div className={`px-6 py-4 border-b rounded-t-2xl ${approvalModal.action === 'approve' ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
-              <h3 className="font-semibold text-gray-900">
-                {approvalModal.action === 'approve' ? '✅ Approve Enrollment' : '❌ Reject Enrollment'}
-              </h3>
-            </div>
-            <div className="px-6 py-5 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {approvalModal.action === 'approve' ? 'Comment (optional)' : 'Reason for rejection *'}
-                </label>
-                <textarea value={comment} onChange={e => setComment(e.target.value)} rows={3}
-                  placeholder={approvalModal.action === 'approve' ? 'Add a note...' : 'Explain why this enrollment is being rejected...'}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#001840]/20 resize-none" />
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => setApprovalModal(null)} disabled={actionLoading}
-                  className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
-                  Cancel
-                </button>
-                <button onClick={handleApprove} disabled={actionLoading}
-                  className={`flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${approvalModal.action === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
-                  {actionLoading ? 'Processing...' : approvalModal.action === 'approve' ? 'Approve' : 'Reject'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
 function DashboardView({ stats }) {
-  const statCards = [
-    {
-      label: "Total Users",
-      value: stats?.totalUsers || 0,
-      icon: Users,
-      color: "bg-blue-500",
-    },
-    {
-      label: "Active FAQs",
-      value: stats?.totalFAQs || 0,
-      icon: MessageSquare,
-      color: "bg-green-500",
-    },
-    {
-      label: "Buildings",
-      value: stats?.totalBuildings || 0,
-      icon: Building2,
-      color: "bg-purple-500",
-    },
-    {
-      label: "Total Chats",
-      value: stats?.totalChats || 0,
-      icon: BarChart3,
-      color: "bg-orange-500",
-    },
+  const [enrollStats, setEnrollStats] = useState(null);
+  const [recentEnrollments, setRecentEnrollments] = useState([]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    fetch("http://localhost:3000/api/admin/enrollments/stats", {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) {
+          setEnrollStats(d.summary);
+          setRecentEnrollments(d.recentEnrollments || []);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const topCards = [
+    { label: "Total Enrollments", value: enrollStats?.total ?? 0, color: "bg-[#001840]", icon: FileText },
+    { label: "Pending Review", value: (enrollStats?.submitted ?? 0) + (enrollStats?.pending_exam ?? 0), color: "bg-blue-600", icon: Clock },
+    { label: "Enrolled", value: enrollStats?.enrolled ?? 0, color: "bg-emerald-600", icon: CheckCircle2 },
+    { label: "Rejected", value: enrollStats?.rejected ?? 0, color: "bg-red-500", icon: AlertCircle },
+  ];
+
+  const statusData = enrollStats ? [
+    { label: "Submitted", value: enrollStats.submitted ?? 0, color: "bg-blue-500" },
+    { label: "Pending Exam", value: enrollStats.pending_exam ?? 0, color: "bg-yellow-500" },
+    { label: "Enrolled", value: enrollStats.enrolled ?? 0, color: "bg-emerald-600" },
+    { label: "Rejected", value: enrollStats.rejected ?? 0, color: "bg-red-500" },
+  ] : [];
+
+  const levelData = enrollStats ? [
+    { label: "JHS", value: enrollStats.jhs ?? 0, color: "bg-indigo-500" },
+    { label: "SHS", value: enrollStats.shs ?? 0, color: "bg-purple-500" },
+    { label: "College", value: enrollStats.college ?? 0, color: "bg-[#102A71]" },
+  ] : [];
+
+  const maxStatus = Math.max(...statusData.map(d => d.value), 1);
+  const maxLevel = Math.max(...levelData.map(d => d.value), 1);
+
+  const systemCards = [
+    { label: "Total Users", value: stats?.totalUsers ?? 0, icon: Users, color: "bg-blue-500" },
+    { label: "Active FAQs", value: stats?.totalFAQs ?? 0, icon: MessageSquare, color: "bg-green-500" },
+    { label: "Buildings", value: stats?.totalBuildings ?? 0, icon: Building2, color: "bg-purple-500" },
+    { label: "Total Chats", value: stats?.totalChats ?? 0, icon: BarChart3, color: "bg-orange-500" },
   ];
 
   return (
     <div className="space-y-6">
-      {/* Stats Grid */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <Card key={stat.label}>
-              <CardContent className="p-6">
+      {/* Enrollment Stats Cards */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Enrollment Overview</h3>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {topCards.map(card => {
+            const Icon = card.icon;
+            return (
+              <div key={card.label} className={`${card.color} rounded-2xl p-5 text-white`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600 mb-1">{stat.label}</p>
-                    <p className="text-3xl font-bold text-gray-900">{stat.value}</p>
+                    <p className="text-xs font-medium opacity-80 mb-1">{card.label}</p>
+                    <p className="text-3xl font-bold">{card.value}</p>
                   </div>
-                  <div className={`w-12 h-12 ${stat.color} rounded-lg flex items-center justify-center`}>
-                    <Icon className="w-6 h-6 text-white" />
+                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                    <Icon className="w-5 h-5 text-white" />
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>Common administrative tasks</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Button className="bg-[#001840] hover:bg-[#102A71]">
-              <Plus className="w-4 h-4 mr-2" />
-              Add FAQ
-            </Button>
-            <Button variant="outline">
-              <Users className="w-4 h-4 mr-2" />
-              View Users
-            </Button>
-            <Button variant="outline">
-              <Building2 className="w-4 h-4 mr-2" />
-              Manage Buildings
-            </Button>
-            <Button variant="outline">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              View Analytics
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Charts Row */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Enrollment by Status */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Enrollments by Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {statusData.map(item => (
+                <div key={item.label}>
+                  <div className="flex items-center justify-between text-sm mb-1">
+                    <span className="text-gray-600 font-medium">{item.label}</span>
+                    <span className="font-bold text-gray-900">{item.value}</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2.5">
+                    <div
+                      className={`${item.color} h-2.5 rounded-full transition-all duration-700`}
+                      style={{ width: `${Math.round((item.value / maxStatus) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+              {statusData.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No enrollment data yet</p>}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Enrollment by Level */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Enrollments by Level</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {levelData.map(item => (
+                <div key={item.label}>
+                  <div className="flex items-center justify-between text-sm mb-1">
+                    <span className="text-gray-600 font-medium">{item.label}</span>
+                    <span className="font-bold text-gray-900">{item.value}</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-4">
+                    <div
+                      className={`${item.color} h-4 rounded-full transition-all duration-700 flex items-center justify-end pr-2`}
+                      style={{ width: `${Math.max(Math.round((item.value / maxLevel) * 100), item.value > 0 ? 8 : 0)}%` }}
+                    >
+                      {item.value > 0 && <span className="text-white text-xs font-bold">{Math.round((item.value / maxLevel) * 100)}%</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {levelData.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No enrollment data yet</p>}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* System Stats */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">System Overview</h3>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {systemCards.map(card => {
+            const Icon = card.icon;
+            return (
+              <Card key={card.label}>
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-500 mb-1">{card.label}</p>
+                      <p className="text-2xl font-bold text-gray-900">{card.value}</p>
+                    </div>
+                    <div className={`w-10 h-10 ${card.color} rounded-xl flex items-center justify-center`}>
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
 
       {/* System Status */}
       <Card>
-        <CardHeader>
-          <CardTitle>System Status</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-base">System Status</CardTitle></CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-green-600" />
-                <span className="font-medium text-green-900">Database Connection</span>
+          <div className="grid sm:grid-cols-3 gap-3">
+            {[
+              { label: "Database Connection", status: "Active" },
+              { label: "API Services", status: "Running" },
+              { label: "Email Service", status: "Active" },
+            ].map(item => (
+              <div key={item.label} className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-medium text-green-900">{item.label}</span>
+                </div>
+                <Badge className="bg-green-600 text-xs">{item.status}</Badge>
               </div>
-              <Badge className="bg-green-600">Active</Badge>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-green-600" />
-                <span className="font-medium text-green-900">API Services</span>
-              </div>
-              <Badge className="bg-green-600">Running</Badge>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-green-600" />
-                <span className="font-medium text-green-900">Chat Bot</span>
-              </div>
-              <Badge className="bg-green-600">Online</Badge>
-            </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -871,10 +774,7 @@ function FAQsView({ faqs, onDelete, onEdit, onAdd, editingFAQ, showForm, onSave,
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h3 className="text-2xl font-bold text-gray-900">FAQ Management</h3>
-          <p className="text-gray-600">Manage chatbot responses and knowledge base</p>
-        </div>
+        <div></div>
         <Button onClick={onAdd} className="bg-[#001840] hover:bg-[#102A71]">
           <Plus className="w-4 h-4 mr-2" />
           Add New FAQ
@@ -1096,10 +996,33 @@ function FAQsView({ faqs, onDelete, onEdit, onAdd, editingFAQ, showForm, onSave,
   );
 }
 
-function UsersView({ users }) {
+function UsersView({ users: initialUsers }) {
+  const [users, setUsers] = useState(initialUsers);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [deleting, setDeleting] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const PAGE_SIZE = 10;
+
+  async function handleDeleteUser(userId, userName) {
+    setDeleting(userId);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete user');
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      toast.success(`User "${userName}" removed successfully`);
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete user');
+    } finally {
+      setDeleting(null);
+      setConfirmDelete(null);
+    }
+  }
 
   const filtered = users.filter(u =>
     !search ||
@@ -1114,10 +1037,7 @@ function UsersView({ users }) {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-2xl font-bold text-gray-900">User Management</h3>
-          <p className="text-gray-600 text-sm mt-0.5">{users.length} registered users</p>
-        </div>
+        <div></div>
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
@@ -1141,7 +1061,7 @@ function UsersView({ users }) {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {paginated.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-10 text-center text-gray-400 text-sm">No users found</td></tr>
+                  <tr><td colSpan={6} className="px-6 py-10 text-center text-gray-400 text-sm">No users found</td></tr>
                 ) : paginated.map((user) => (
                   <tr key={user.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{user.name}</td>
@@ -1161,6 +1081,19 @@ function UsersView({ users }) {
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
                       {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {(user.role === 'student' || user.role === 'user') ? (
+                        <button
+                          onClick={() => setConfirmDelete(user)}
+                          disabled={deleting === user.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 size={12} /> Remove
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">Protected</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1194,6 +1127,36 @@ function UsersView({ users }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Confirm Delete Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Remove User?</h3>
+            <p className="text-sm text-gray-600 mb-1">You are about to remove:</p>
+            <p className="font-semibold text-[#001840]">{confirmDelete.name}</p>
+            <p className="text-xs text-gray-400 mb-4">{confirmDelete.email}</p>
+            <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 mb-5">
+              This will also delete all their enrollments and documents. This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteUser(confirmDelete.id, confirmDelete.name)}
+                disabled={deleting === confirmDelete.id}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
+              >
+                {deleting === confirmDelete.id ? 'Removing...' : 'Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1427,10 +1390,7 @@ function BuildingsView({ buildings, onRefresh }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-2xl font-bold text-gray-900">Building Management</h3>
-          <p className="text-gray-600">Manage campus buildings, locations, and 360° photos</p>
-        </div>
+        <div></div>
         <Button 
           onClick={() => {
             setShowForm(true);
@@ -1698,10 +1658,7 @@ function BuildingsView({ buildings, onRefresh }) {
 function SettingsView() {
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-2xl font-bold text-gray-900">Settings</h3>
-        <p className="text-gray-600">Configure system settings and preferences</p>
-      </div>
+      <div></div>
 
       <Card>
         <CardHeader>

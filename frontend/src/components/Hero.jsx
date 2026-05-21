@@ -54,7 +54,7 @@ export function Hero() {
           {/* Subtext */}
           <p className="text-lg sm:text-xl text-[#FFDC5F] leading-relaxed max-w-xl">
             A smart admission and campus guide powered by Natural Language
-            Processing and Augmented Reality to simplify enrollment and campus
+            Processing and Campus Virtual Tour (360 images) to simplify enrollment and campus
             navigation at Eastern Mindoro College.
           </p>
 
@@ -83,8 +83,8 @@ export function Hero() {
               <div className="text-sm text-[#FFDC5F] mt-1">Available</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-[#F5C400]">AR</div>
-              <div className="text-sm text-[#FFDC5F] mt-1">Navigation</div>
+              <div className="text-3xl font-bold text-[#F5C400]">360°</div>
+              <div className="text-sm text-[#FFDC5F] mt-1">Virtual Tour</div>
             </div>
             <div>
               <div className="text-3xl font-bold text-[#F5C400]">NLP</div>
@@ -94,16 +94,16 @@ export function Hero() {
         </div>
       </div>
 
-      {/* Floating AR Card — bottom right */}
+      {/* Floating Virtual Tour Card — bottom right */}
       <div className="absolute bottom-16 right-8 lg:right-16 z-10 hidden md:block">
         <div className="bg-[#FFFDF0] p-5 rounded-xl shadow-2xl max-w-xs border border-[#F5C400]/30">
           <div className="flex items-start gap-3">
-            <div className="bg-[#F5C400] p-3 rounded-lg shrink-0">
+            <div className="bg-[#F5C400] p-3 rounded-lg shrink-0"> 
               <MapPin className="w-5 h-5 text-[#001840]" />
             </div>
             <div>
-              <h4 className="font-semibold text-[#001840]">AR Navigation Active</h4>
-              <p className="text-sm text-gray-600 mt-1">Find your way with real-time directions</p>
+              <h4 className="font-semibold text-[#001840]">Campus Virtual Tour Active</h4>
+              <p className="text-sm text-gray-600 mt-1">Explore campus with 360° images</p>
             </div>
           </div>
         </div>

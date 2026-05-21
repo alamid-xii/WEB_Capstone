@@ -1,4 +1,4 @@
-import { Clock, Smile, TrendingUp, Heart, Target, GraduationCap } from "lucide-react";
+﻿import { Clock, Smile, TrendingUp, Heart, Target, GraduationCap } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 
 export function Impact() {
@@ -96,7 +96,7 @@ export function Impact() {
               </div>
               
               <blockquote className="text-xl text-gray-700 mb-6 leading-relaxed">
-                "UniNav made my enrollment process so much easier. I was able to get all my questions answered instantly and navigate the campus before I even arrived. It really reduced my anxiety about starting college."
+                "GabAI made my enrollment process so much easier. I was able to get all my questions answered instantly and navigate the campus before I even arrived. It really reduced my anxiety about starting college."
               </blockquote>
               
               <div className="flex items-center gap-4">

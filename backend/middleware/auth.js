@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+﻿import jwt from 'jsonwebtoken';
 import { sequelize } from '../models/db.js';
 
 // Authenticate JWT token
@@ -40,64 +40,34 @@ export const authenticateToken = async (req, res, next) => {
 
 // Require admin role
 export const requireAdmin = (req, res, next) => {
-  console.log('=== REQUIRE ADMIN CHECK ===');
-  console.log('req.user:', req.user);
-  
   if (!req.user) {
-    console.log('No user found in request');
     return res.status(401).json({ error: 'Authentication required' });
   }
-  
-  console.log('User role:', req.user.role);
-  
   if (req.user.role !== 'admin') {
-    console.log('User is not admin');
     return res.status(403).json({ error: 'Admin access required' });
   }
-  
-  console.log('Admin check passed');
   next();
 };
 
 // Require registrar role
 export const requireRegistrar = (req, res, next) => {
-  console.log('=== REQUIRE REGISTRAR CHECK ===');
-  console.log('req.user:', req.user);
-  
   if (!req.user) {
-    console.log('No user found in request');
     return res.status(401).json({ error: 'Authentication required' });
   }
-  
-  console.log('User role:', req.user.role);
-  
   if (req.user.role !== 'registrar') {
-    console.log('User is not registrar');
     return res.status(403).json({ error: 'Registrar access required' });
   }
-  
-  console.log('Registrar check passed');
   next();
 };
 
 // Require admin or registrar role
 export const requireAdminOrRegistrar = (req, res, next) => {
-  console.log('=== REQUIRE ADMIN OR REGISTRAR CHECK ===');
-  console.log('req.user:', req.user);
-  
   if (!req.user) {
-    console.log('No user found in request');
     return res.status(401).json({ error: 'Authentication required' });
   }
-  
-  console.log('User role:', req.user.role);
-  
   if (req.user.role !== 'admin' && req.user.role !== 'registrar') {
-    console.log('User is neither admin nor registrar');
     return res.status(403).json({ error: 'Admin or Registrar access required' });
   }
-  
-  console.log('Admin or Registrar check passed');
   next();
 };
 

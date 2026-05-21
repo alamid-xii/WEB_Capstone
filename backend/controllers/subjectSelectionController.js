@@ -1,4 +1,4 @@
-import { EnrollmentRecord } from '../models/enrollmentRecordModel.js';
+﻿import { EnrollmentRecord } from '../models/enrollmentRecordModel.js';
 import { EnrollmentSubject } from '../models/enrollmentSubjectModel.js';
 import { Subject } from '../models/subjectModel.js';
 import { sequelize } from '../models/db.js';

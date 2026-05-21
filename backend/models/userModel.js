@@ -1,4 +1,4 @@
-
+﻿
 
       /*
     MIT License
@@ -45,6 +45,19 @@ export const User = sequelize.define("User", {
     type: DataTypes.BOOLEAN, 
     defaultValue: true,
     allowNull: false
+  },
+  isVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false
+  },
+  verificationToken: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
+  verificationExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
   },
   createdAt: {
     type: DataTypes.DATE,

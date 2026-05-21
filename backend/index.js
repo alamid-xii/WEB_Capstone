@@ -1,4 +1,4 @@
-/*
+﻿/*
     MIT License
     
     Copyright (c) 2025 Christian I. Cabrera || XianFire Framework
@@ -116,8 +116,32 @@ fs.readdir(partialsDir, (err, files) => {
 
 app.use("/", router);
 
-// Sync new models (alter: true adds new columns without dropping data)
-sequelize.sync({ alter: true }).catch(err => console.error("DB sync error:", err));
+// Sync only new tables, don't alter existing ones (SQLite doesn't support ALTER well)
+sequelize.sync({ alter: false }).catch(err => console.error("DB sync error:", err));
+
+// Manually add new columns if they don't exist yet (safe for SQLite)
+async function addMissingColumns() {
+  try {
+    const queries = [
+      `ALTER TABLE enrollment_records ADD COLUMN sectionId INTEGER`,
+      `ALTER TABLE enrollment_records ADD COLUMN sectionName VARCHAR(50)`,
+      `ALTER TABLE sections ADD COLUMN strand VARCHAR(50)`,
+      `ALTER TABLE users ADD COLUMN isVerified BOOLEAN DEFAULT 0`,
+      `ALTER TABLE users ADD COLUMN verificationToken VARCHAR(100)`,
+      `ALTER TABLE users ADD COLUMN verificationExpires DATETIME`,
+    ];
+    for (const q of queries) {
+      try {
+        await sequelize.query(q);
+      } catch (_) {
+        // Column already exists — ignore
+      }
+    }
+  } catch (err) {
+    console.error('Column migration error:', err.message);
+  }
+}
+addMissingColumns();
 
 export default app;
 

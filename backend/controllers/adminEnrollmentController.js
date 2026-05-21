@@ -1,3 +1,4 @@
+﻿import { sendEnrollmentApprovedEmail, sendEnrollmentRejectedEmail } from '../services/emailService.js';
 import { sequelize } from '../models/db.js';
 import archiver from 'archiver';
 import { generateEnrollmentPDF } from '../services/pdfGenerator.js';
@@ -60,9 +61,9 @@ export const approveEnrollment = async (req, res) => {
   try {
     const { id } = req.params;
     const { comment } = req.body;
-    const adminId = req.user.id; // From auth middleware
+    const adminId = req.user.id;
     
-    const [result] = await sequelize.query(
+    const [, approveMeta] = await sequelize.query(
       `UPDATE enrollment_records 
        SET status = 'approved',
            admin_comments = ?,
@@ -73,24 +74,30 @@ export const approveEnrollment = async (req, res) => {
       { replacements: [comment || null, adminId, id] }
     );
     
-    if (result.affectedRows === 0) {
+    if ((approveMeta?.changes ?? 0) === 0) {
       return res.status(404).json({ error: 'Enrollment not found' });
     }
-    
-    // Fetch the updated record
+
+    // Auto-assign to a section (also sets status to 'enrolled' and enrolls subjects)
+    const assignResult = await autoAssignSection(id);
+
+    // Fetch the final updated record
     const [[enrollment]] = await sequelize.query(
       'SELECT * FROM enrollment_records WHERE id = ?',
       { replacements: [id] }
     );
 
-    // Auto-assign to a section
-    const assignResult = await autoAssignSection(id);
+    // Send approval email
+    try {
+      const [[user]] = await sequelize.query('SELECT * FROM users WHERE id = ?', { replacements: [enrollment.userId] });
+      if (user) await sendEnrollmentApprovedEmail(user, enrollment);
+    } catch (_) {}
 
     res.json({
       message: 'Enrollment approved successfully',
       enrollment,
       sectionAssignment: assignResult.assigned
-        ? { assigned: true, section: assignResult.section }
+        ? { assigned: true, section: assignResult.section, subjectsEnrolled: assignResult.subjectsEnrolled }
         : { assigned: false, reason: assignResult.reason }
     });
   } catch (error) {
@@ -110,7 +117,7 @@ export const rejectEnrollment = async (req, res) => {
       return res.status(400).json({ error: 'Comment is required for rejection' });
     }
     
-    const [result] = await sequelize.query(
+    const [, rejectMeta] = await sequelize.query(
       `UPDATE enrollment_records 
        SET status = 'rejected',
            admin_comments = ?,
@@ -121,7 +128,7 @@ export const rejectEnrollment = async (req, res) => {
       { replacements: [comment, adminId, id] }
     );
     
-    if (result.affectedRows === 0) {
+    if ((rejectMeta?.changes ?? 0) === 0) {
       return res.status(404).json({ error: 'Enrollment not found' });
     }
     
@@ -163,24 +170,38 @@ export const bulkApproveVerified = async (req, res) => {
       params = [adminId];
     }
 
-    const [result] = await sequelize.query(query, { replacements: params });
-    const count = result.affectedRows ?? result.changes ?? 0;
+    const [result, meta] = await sequelize.query(query, { replacements: params });
+    // SQLite returns changes in meta object
+    const count = meta?.changes ?? result?.changes ?? result?.affectedRows ?? 0;
 
     // Auto-assign sections for all newly approved enrollments
+    // Get the IDs that were just set to 'approved'
+    let enrollmentIds = [];
     if (ids && ids.length > 0) {
-      for (const eid of ids) {
-        await autoAssignSection(eid).catch(() => {}); // non-blocking
-      }
+      enrollmentIds = ids;
     } else {
-      // Get all that were just approved and assign them
       const [justApproved] = await sequelize.query(
-        `SELECT id FROM enrollment_records WHERE status = 'enrolled' AND approved_by = ? AND approved_at >= datetime('now', '-5 seconds')`,
+        `SELECT id, userId FROM enrollment_records WHERE status = 'approved' AND approved_by = ? AND approved_at >= datetime('now', '-10 seconds')`,
         { replacements: [adminId] }
       );
-      for (const row of justApproved) {
-        await autoAssignSection(row.id).catch(() => {});
-      }
+      enrollmentIds = justApproved.map(r => r.id);
     }
+
+    // Auto-assign section + subjects for each
+    for (const eid of enrollmentIds) {
+      await autoAssignSection(eid).catch(() => {});
+    }
+
+    // Send approval emails
+    try {
+      for (const eid of enrollmentIds) {
+        const [[enr]] = await sequelize.query('SELECT * FROM enrollment_records WHERE id = ?', { replacements: [eid] });
+        if (enr) {
+          const [[user]] = await sequelize.query('SELECT * FROM users WHERE id = ?', { replacements: [enr.userId] });
+          if (user) await sendEnrollmentApprovedEmail(user, enr).catch(() => {});
+        }
+      }
+    } catch (_) {}
 
     res.json({ message: `${count} enrollment(s) approved successfully`, count });
   } catch (error) {
@@ -276,7 +297,7 @@ export const getEnrollmentStats = async (req, res) => {
     const [recentEnrollments] = await sequelize.query(`
       SELECT er.id, er.firstName, er.familyName, er.educationLevel, 
              er.course, er.gradeLevel, er.status, er.createdAt,
-             u.email as userEmail
+             u.name as user_name, u.email as userEmail
       FROM enrollment_records er
       LEFT JOIN users u ON er.userId = u.id
       ORDER BY er.createdAt DESC
@@ -288,9 +309,8 @@ export const getEnrollmentStats = async (req, res) => {
       draft:            Number(stats?.draft)            || 0,
       submitted:        Number(stats?.submitted)        || 0,
       pending_exam:     Number(stats?.pending_exam)     || 0,
-      approved:         Number(stats?.approved)         || 0,
-      subjects_enrolled:Number(stats?.subjects_enrolled)|| 0,
-      enrolled:         Number(stats?.enrolled)         || 0,
+      // Merge approved + subjects_enrolled + enrolled all into "enrolled"
+      enrolled:         (Number(stats?.approved) || 0) + (Number(stats?.subjects_enrolled) || 0) + (Number(stats?.enrolled) || 0),
       rejected:         Number(stats?.rejected)         || 0,
       jhs:              Number(stats?.jhs)              || 0,
       shs:              Number(stats?.shs)              || 0,

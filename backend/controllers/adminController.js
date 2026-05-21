@@ -1,4 +1,4 @@
-/*
+﻿/*
     MIT License
     
     Copyright (c) 2025 Christian I. Cabrera || XianFire Framework
@@ -161,3 +161,43 @@ export const updateUser = async (req, res) => {
     res.status(500).json({ error: "Failed to update user" });
   }
 };
+
+// Delete user (admin only) — also deletes their enrollments
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user?.id;
+
+    // Prevent deleting yourself
+    if (parseInt(id) === adminId) {
+      return res.status(400).json({ error: "You cannot delete your own account" });
+    }
+
+    const [[user]] = await sequelize.query("SELECT * FROM users WHERE id = ?", { replacements: [id] });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Prevent deleting other admins/registrars
+    if (user.role === "admin" || user.role === "registrar") {
+      return res.status(403).json({ error: "Cannot delete admin or registrar accounts" });
+    }
+
+    // Get their enrollments
+    const [enrollments] = await sequelize.query("SELECT id FROM enrollment_records WHERE userId = ?", { replacements: [id] });
+
+    // Delete related data
+    for (const e of enrollments) {
+      await sequelize.query("DELETE FROM enrollment_subjects WHERE enrollmentId = ?", { replacements: [e.id] });
+      await sequelize.query("DELETE FROM enrollment_documents WHERE enrollmentId = ?", { replacements: [e.id] });
+    }
+    await sequelize.query("DELETE FROM enrollment_records WHERE userId = ?", { replacements: [id] });
+    await sequelize.query("DELETE FROM ChatLogs WHERE userId = ?", { replacements: [id] });
+    await sequelize.query("DELETE FROM users WHERE id = ?", { replacements: [id] });
+
+    res.json({ message: `User "${user.name}" deleted successfully` });
+  } catch (error) {
+    console.error("Delete user error:", error);
+    res.status(500).json({ error: "Failed to delete user" });
+  }
+};
+
+// Delete user (admin only) — also deletes their enrollments

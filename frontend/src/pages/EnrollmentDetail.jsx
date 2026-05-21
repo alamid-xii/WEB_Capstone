@@ -186,49 +186,120 @@ export function EnrollmentDetail() {
   // Determine which form to show based on education level
   const isHS = enrollment.educationLevel === 'JHS' || enrollment.educationLevel === 'SHS';
   
-  // If admin is viewing, show the enrollment form in read-only mode
-  if (isFromAdmin) {
+  // If admin/registrar is viewing — show clean read-only summary, NOT the editable form
+  if (isFromAdmin || isAdminUser) {
     const statusConfig = getStatusConfig(enrollment.status || 'draft');
     const StatusIcon = statusConfig.icon;
-    
+    const e = enrollment;
+
+    const SectionBlock = ({ title, children }) => (
+      <div className="mb-6">
+        <h3 className="text-sm font-bold text-[#001840] uppercase tracking-wider mb-3 pb-2 border-b-2 border-[#F5C400]">{title}</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{children}</div>
+      </div>
+    );
+    const F = ({ label, value }) => value ? (
+      <div>
+        <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+        <p className="text-sm font-semibold text-[#001840]">{value}</p>
+      </div>
+    ) : null;
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#FFFDF0] via-[#FFF9E6] to-[#FFFDF0] py-8">
-        {/* Action Bar */}
-        <div className="max-w-6xl mx-auto mb-6 px-4 no-print">
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <button 
-                onClick={handleBackToList}
-                className="px-4 py-2 border-2 border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 transition-all font-medium"
-              >
-                ← Back to List
-              </button>
-              
-              <button 
-                onClick={handleDownloadPDF}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-all font-medium flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                Download PDF
-              </button>
-              
-              <div className="ml-auto flex items-center gap-3">
-                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 ${statusConfig.color}`}>
-                  <StatusIcon className="w-5 h-5" />
-                  <span className="font-semibold">{statusConfig.label}</span>
-                </div>
+        <div className="max-w-4xl mx-auto px-4">
+          {/* Action Bar */}
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 mb-6 flex flex-wrap items-center gap-3">
+            <button onClick={handleBackToList} className="px-4 py-2 border-2 border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 font-medium">
+              ← Back to List
+            </button>
+            <button onClick={handleDownloadPDF} className="px-4 py-2 bg-[#102A71] text-white rounded-lg hover:bg-[#001840] font-medium flex items-center gap-2">
+              <Download className="w-4 h-4" /> Download PDF
+            </button>
+            <div className="ml-auto">
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 ${statusConfig.color}`}>
+                <StatusIcon className="w-4 h-4" />
+                <span className="font-semibold text-sm">{statusConfig.label}</span>
               </div>
             </div>
           </div>
-        </div>
-        
-        {/* Enrollment Form View */}
-        <div className="max-w-6xl mx-auto px-4">
-          {isHS ? (
-            <HSEnrollmentForm enrollmentId={id} readOnly={true} />
-          ) : (
-            <EnrollmentForm enrollmentId={id} readOnly={true} />
-          )}
+
+          {/* Summary Card */}
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+            {/* Header */}
+            <div className="flex items-center gap-4 mb-6 pb-4 border-b border-gray-100">
+              <img src="/emc_logo_nobg.png" alt="EMC" className="w-12 h-12" />
+              <div>
+                <h1 className="text-xl font-bold text-[#001840]">
+                  {e.firstName} {e.middleName ? e.middleName + ' ' : ''}{e.familyName}
+                </h1>
+                <p className="text-sm text-gray-500">
+                  {e.educationLevel}{e.course ? ` — ${e.course}` : e.gradeLevel ? ` — ${e.gradeLevel}` : ''}
+                  {e.strand ? ` (${e.strand})` : ''}{e.major ? ` — ${e.major}` : ''}
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  ID: #{e.id} · Submitted: {e.createdAt ? new Date(e.createdAt).toLocaleDateString() : '—'}
+                </p>
+              </div>
+            </div>
+
+            <SectionBlock title="Enrollment Details">
+              <F label="Education Level" value={e.educationLevel} />
+              <F label="Enrollment Type" value={e.enrollmentType} />
+              <F label="Student Status" value={e.studentStatus} />
+              <F label="Student Type" value={e.studentType} />
+              <F label="Course / Grade" value={e.course || e.gradeLevel} />
+              <F label="Strand" value={e.strand} />
+              <F label="Major" value={e.major} />
+              <F label="Semester" value={e.semester} />
+              <F label="Academic Year" value={e.academicYear} />
+              <F label="Student Number" value={e.studentNumber} />
+              <F label="Section" value={e.sectionName ? `Section ${e.sectionName}` : null} />
+            </SectionBlock>
+
+            <SectionBlock title="Personal Information">
+              <F label="Full Name" value={`${e.firstName || ''} ${e.middleName || ''} ${e.familyName || ''}`.trim()} />
+              <F label="Sex" value={e.sex} />
+              <F label="Date of Birth" value={e.dateOfBirth} />
+              <F label="Place of Birth" value={e.placeOfBirth} />
+              <F label="Email" value={e.email} />
+              <F label="Mobile Number" value={e.mobileNumber} />
+            </SectionBlock>
+
+            <SectionBlock title="Family Background">
+              <F label="Father" value={e.fatherName} />
+              <F label="Father Occupation" value={e.fatherOccupation} />
+              <F label="Mother" value={e.motherName} />
+              <F label="Mother Occupation" value={e.motherOccupation} />
+              <F label="Guardian" value={e.guardianName} />
+              <F label="Guardian Occupation" value={e.guardianOccupation} />
+            </SectionBlock>
+
+            {e.sscApplied ? (
+              <SectionBlock title="SSC Information">
+                <F label="SSC Applied" value="Yes" />
+                <F label="Qualified" value={e.sscQualified ? 'Yes' : 'No'} />
+                <F label="Exam Date" value={e.sscExamDate} />
+                <F label="Exam Score" value={e.sscExamScore ? String(e.sscExamScore) : null} />
+                <F label="Result" value={e.sscResult} />
+                <F label="Class" value={e.sscClass} />
+              </SectionBlock>
+            ) : null}
+
+            {e.registrar_remarks ? (
+              <div className="mt-4 bg-orange-50 border border-orange-200 rounded-xl p-4">
+                <p className="text-xs font-bold text-orange-700 uppercase tracking-wider mb-1">Registrar Remarks</p>
+                <p className="text-sm text-orange-800">{e.registrar_remarks}</p>
+              </div>
+            ) : null}
+
+            {e.admin_comments ? (
+              <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-xs font-bold text-red-700 uppercase tracking-wider mb-1">Admin Comments</p>
+                <p className="text-sm text-red-800">{e.admin_comments}</p>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     );

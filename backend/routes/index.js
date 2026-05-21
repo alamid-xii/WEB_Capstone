@@ -1,4 +1,4 @@
-
+﻿
 /*
     MIT License
     
@@ -26,10 +26,10 @@
     
 import express from "express";
 import { homePage } from "../controllers/homeController.js";
-import { loginPage, registerPage, forgotPasswordPage, dashboardPage, loginUser, registerUser, logoutUser } from "../controllers/authController.js";
+import { loginPage, registerPage, forgotPasswordPage, dashboardPage, loginUser, registerUser, logoutUser, verifyEmail, resendVerification } from "../controllers/authController.js";
 import { sendMessage, rateFeedback } from "../controllers/chatController.js";
 import { getAllBuildings, getBuildingById, createBuilding, updateBuilding, deleteBuilding, upload } from "../controllers/buildingController.js";
-import { requireAdmin, getDashboardStats, getAllFAQs, createFAQ, updateFAQ, deleteFAQ, getAllUsers, updateUser } from "../controllers/adminController.js";
+import { requireAdmin, getDashboardStats, getAllFAQs, createFAQ, updateFAQ, deleteFAQ, getAllUsers, updateUser, deleteUser } from "../controllers/adminController.js";
 import { requireRegistrar, requireAdminOrRegistrar } from "../middleware/auth.js";
 import enrollmentRoutes from "./enrollmentRoutes.js";
 import adminEnrollmentRoutes from "./adminEnrollmentRoutes.js";
@@ -57,6 +57,8 @@ router.get("/logout", logoutUser);
 router.post("/api/auth/login", loginUser);
 router.post("/api/auth/register", registerUser);
 router.post("/api/auth/logout", logoutUser);
+router.post("/api/auth/verify-otp", verifyEmail);
+router.post("/api/auth/resend-verification", resendVerification);
 
 // Protected routes
 router.get("/dashboard", dashboardPage);
@@ -77,6 +79,7 @@ router.put("/api/admin/faqs/:id", requireAdmin, updateFAQ);
 router.delete("/api/admin/faqs/:id", requireAdmin, deleteFAQ);
 router.get("/api/admin/users", requireAdmin, getAllUsers);
 router.put("/api/admin/users/:id", requireAdmin, updateUser);
+router.delete("/api/admin/users/:id", requireAdmin, deleteUser);
 router.post("/api/admin/buildings", requireAdmin, upload.single("photo360"), createBuilding);
 router.put("/api/admin/buildings/:id", requireAdmin, upload.single("photo360"), updateBuilding);
 router.delete("/api/admin/buildings/:id", requireAdmin, deleteBuilding);

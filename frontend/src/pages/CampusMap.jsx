@@ -1,278 +1,310 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, X, MapPin, ZoomIn, ZoomOut, Maximize2, Clock, Building2, ChevronRight } from "lucide-react";
-import { Pannellum } from "pannellum-react";
+import { Search, MapPin, X, Building2, ChevronRight, Info, RefreshCw } from "lucide-react";
+import { PanoramaViewer } from "../components/PanoramaViewer";
 
-const CATEGORY_COLORS = {
-  Academic:       "#102A71",
-  Administration: "#001840",
-  Sports:         "#059669",
-  Health:         "#DC2626",
-  Services:       "#EA580C",
-  Library:        "#D97706",
-};
+const aerialPhoto = "/emc_aerial.jpg";
+const API = "http://localhost:3000/api";
 
 export function CampusMap() {
-  const [dbBuildings, setDbBuildings] = useState([]);
-  const [pins, setPins] = useState([]);
-  const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const mapRef = useRef(null);
+  const [buildings, setBuildings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedBuilding, setSelectedBuilding] = useState(null);
+  const detailsRef = useRef(null);
 
   useEffect(() => {
-    fetch("http://localhost:3000/api/buildings")
-      .then(r => r.ok ? r.json() : [])
-      .then(data => {
-        if (!Array.isArray(data) || data.length === 0) return;
-        setDbBuildings(data);
-        const built = data.filter(b => b.coordinates).map(b => {
-          let coords = { x: 50, y: 50 };
-          try { coords = JSON.parse(b.coordinates); } catch {}
-          return {
-            id: `db-${b.id}`, dbId: b.id,
-            name: b.name || "Building",
-            desc: b.description || "",
-            category: b.category || "Academic",
-            x: coords.x ?? 50, y: coords.y ?? 50,
-            color: CATEGORY_COLORS[b.category] || "#001840",
-          };
-        });
-        setPins(built);
-      })
-      .catch(() => {});
+    fetch(`${API}/buildings`)
+      .then(r => r.ok ? r.json() : Promise.reject("Failed"))
+      .then(data => setBuildings(Array.isArray(data) ? data : []))
+      .catch(() => setBuildings([]))
+      .finally(() => setLoading(false));
   }, []);
 
-  const filtered = pins.filter(b =>
-    !search || b.name.toLowerCase().includes(search.toLowerCase())
+  // Scroll to details when a building is selected
+  useEffect(() => {
+    if (selectedBuilding && detailsRef.current) {
+      setTimeout(() => detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    }
+  }, [selectedBuilding]);
+
+  const filtered = buildings.filter(b =>
+    (b.name || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const dbMatch = selected
-    ? dbBuildings.find(db => db.id === selected.dbId)
-    : null;
+  // Parse coordinates from building
+  function getCoords(building) {
+    if (!building.coordinates) return null;
+    try {
+      const c = typeof building.coordinates === "string"
+        ? JSON.parse(building.coordinates)
+        : building.coordinates;
+      return c;
+    } catch { return null; }
+  }
 
-  const photo360 = dbMatch?.imageUrl
-    ? `http://localhost:3000${dbMatch.imageUrl}`
-    : null;
-
-  let offices = [];
-  try { offices = JSON.parse(dbMatch?.offices || "[]"); } catch {}
-
-  // Zoom / pan
-  const zoomIn    = () => setZoom(z => Math.min(z + 0.25, 3));
-  const zoomOut   = () => setZoom(z => Math.max(z - 0.25, 0.5));
-  const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
-  const onMouseDown = e => { setDragging(true); setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y }); };
-  const onMouseMove = e => { if (dragging) setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }); };
-  const onMouseUp   = () => setDragging(false);
-  const onWheel     = e => { e.preventDefault(); setZoom(z => Math.min(Math.max(z + (e.deltaY > 0 ? -0.12 : 0.12), 0.5), 3)); };
+  // Parse offices JSON
+  function parseOffices(offices) {
+    if (!offices) return [];
+    if (Array.isArray(offices)) return offices;
+    try { return JSON.parse(offices); } catch { return [offices]; }
+  }
 
   return (
-    <div className="flex flex-col bg-[#FFFDF0]" style={{ height: "calc(100vh - 80px)" }}>
-
-      {/* ── Hero strip ── */}
-      <div className="bg-[#001840] px-6 py-3 flex items-center justify-between flex-shrink-0">
-        <div>
-          <h2 className="text-white font-bold text-base leading-tight">Campus Virtual Tour</h2>
-          <p className="text-[#FFDC5F]/60 text-xs mt-0.5">Click any pin to explore buildings in 360°</p>
-        </div>
-        <div className="relative">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
-          <input
-            type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search buildings..."
-            className="bg-white/10 text-white placeholder-white/40 border border-white/20 rounded-lg pl-8 pr-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#F5C400]/40 w-48"
-          />
+    <div className="min-h-screen bg-[#FFFDF0]">
+      {/* Page Header */}
+      <div className="bg-[#001840] text-white px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="bg-[#F5C400] w-10 h-10 rounded-xl flex items-center justify-center">
+              <MapPin className="w-5 h-5 text-[#001840]" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">Campus Virtual Tour</h1>
+              <p className="text-[#FFDC5F] text-sm">Eastern Mindoro College — Calapan City, Oriental Mindoro</p>
+            </div>
+          </div>
+          <p className="text-[#FFFDF0]/70 text-sm mt-2 max-w-xl">
+            Click a building pin on the map or select from the list to explore the 360° virtual tour.
+          </p>
         </div>
       </div>
 
-      {/* ── Body ── */}
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex gap-6 flex-col lg:flex-row">
 
-        {/* ── Map ── */}
-        <div
-          ref={mapRef}
-          className="flex-1 relative overflow-hidden bg-gray-200"
-          style={{ cursor: dragging ? "grabbing" : "grab" }}
-          onMouseDown={onMouseDown} onMouseMove={onMouseMove}
-          onMouseUp={onMouseUp} onMouseLeave={onMouseUp} onWheel={onWheel}
-        >
-          {/* Zoomable */}
-          <div style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: "center center",
-            transition: dragging ? "none" : "transform 0.1s ease",
-            position: "absolute", inset: 0,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <div className="relative" style={{ width: "100%", maxWidth: "960px" }}>
-              <img src="/emc_aerial.jpg" alt="EMC Campus" className="w-full h-auto block select-none" draggable={false} />
-
-              {/* Pins */}
-              {filtered.map(b => {
-                const isActive = selected?.id === b.id;
-                return (
-                  <button key={b.id}
-                    onClick={e => { e.stopPropagation(); setSelected(isActive ? null : b); }}
-                    style={{ left: `${b.x}%`, top: `${b.y}%`, position: "absolute" }}
-                    className="-translate-x-1/2 -translate-y-1/2 group z-10"
-                    title={b.name}
-                  >
-                    {/* Pin dot */}
-                    <div className={`relative flex items-center justify-center rounded-full border-2 border-white shadow-lg transition-all duration-200 ${
-                      isActive ? "w-12 h-12" : "w-9 h-9 hover:scale-110"
-                    }`} style={{ backgroundColor: b.color }}>
-                      <MapPin size={isActive ? 17 : 14} className="text-white" />
-                      {isActive && <span className="absolute inset-0 rounded-full animate-ping opacity-25" style={{ backgroundColor: b.color }} />}
-                    </div>
-                    {/* Label */}
-                    <div className={`absolute left-1/2 -translate-x-1/2 top-full mt-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-semibold shadow pointer-events-none transition-all ${
-                      isActive ? "opacity-100 bg-[#F5C400] text-[#001840]" : "opacity-0 group-hover:opacity-100 bg-[#001840] text-white"
-                    }`}>
-                      {b.name}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Empty state */}
-          {pins.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-              <div className="bg-white/95 border border-gray-200 rounded-2xl px-7 py-6 text-center shadow-lg max-w-xs">
-                <div className="w-12 h-12 bg-[#FFFDF0] rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Building2 size={22} className="text-[#001840]" />
-                </div>
-                <p className="font-semibold text-[#001840] text-sm">No buildings yet</p>
-                <p className="text-xs text-gray-400 mt-1 leading-relaxed">Admin can add buildings and pin their locations from the Admin Panel.</p>
-              </div>
-            </div>
-          )}
-
-          {/* Zoom controls */}
-          <div className="absolute top-4 right-4 flex flex-col gap-1.5 z-20">
-            {[{ I: ZoomIn, fn: zoomIn }, { I: ZoomOut, fn: zoomOut }, { I: Maximize2, fn: resetView }].map(({ I, fn }) => (
-              <button key={fn.name} onClick={fn}
-                className="w-9 h-9 bg-white hover:bg-[#FFFDF0] border border-gray-200 rounded-xl shadow-sm flex items-center justify-center transition-colors">
-                <I size={15} className="text-[#001840]" />
-              </button>
-            ))}
-          </div>
-
-          {/* Hint pill */}
-          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20">
-            <div className="bg-[#001840]/80 backdrop-blur-sm text-white/80 text-xs px-4 py-1.5 rounded-full shadow">
-              Scroll to zoom · Drag to pan · Click a pin to explore
-            </div>
-          </div>
-        </div>
-
-        {/* ── Side Panel ── */}
-        <div className={`absolute top-0 right-0 h-full bg-white flex flex-col transition-all duration-300 ease-in-out z-30 ${
-          selected ? "w-[340px] shadow-2xl border-l border-gray-100" : "w-0 overflow-hidden"
-        }`}>
-          {selected && (
-            <div className="flex flex-col h-full w-[340px]">
-
-              {/* 360 viewer */}
-              <div className="relative flex-shrink-0 bg-gray-100" style={{ height: "210px" }}>
-                {photo360 ? (
-                  <Pannellum width="100%" height="210px" image={photo360}
-                    pitch={5} yaw={180} hfov={120} autoLoad showZoomCtrl={false} showFullscreenCtrl={false} />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#001840] to-[#102A71]">
-                    <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center">
-                      <MapPin size={24} className="text-white/50" />
-                    </div>
-                    <p className="text-white/60 text-xs font-medium">No 360° photo available</p>
-                  </div>
-                )}
-                {/* Close */}
-                <button onClick={() => setSelected(null)}
-                  className="absolute top-3 right-3 w-7 h-7 bg-[#001840]/70 hover:bg-[#001840] rounded-full flex items-center justify-center transition-colors z-10">
-                  <X size={13} className="text-white" />
+          {/* ── Left Panel ── */}
+          <aside className="lg:w-72 shrink-0 flex flex-col gap-4">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search buildings…"
+                className="w-full bg-white border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-[#001840] focus:outline-none focus:border-[#102A71] focus:ring-2 focus:ring-[#102A71]/10"
+              />
+              {search && (
+                <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <X className="w-4 h-4 text-gray-400" />
                 </button>
-              </div>
-
-              {/* Building header */}
-              <div className="px-5 pt-4 pb-3 border-b border-gray-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: selected.color + "18" }}>
-                    <Building2 size={16} style={{ color: selected.color }} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-[#001840] text-base leading-tight">{selected.name}</h3>
-                    <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-xs font-medium"
-                      style={{ backgroundColor: selected.color + "15", color: selected.color }}>
-                      {selected.category}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-
-                {(selected.desc || dbMatch?.description) && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">About</p>
-                    <p className="text-sm text-gray-600 leading-relaxed">{selected.desc || dbMatch?.description}</p>
-                  </div>
-                )}
-
-                {dbMatch?.hours && (
-                  <div className="flex items-start gap-3 p-3 bg-[#FFFDF0] rounded-xl border border-[#F5C400]/20">
-                    <Clock size={15} className="text-[#001840] mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-xs font-semibold text-[#001840] mb-0.5">Operating Hours</p>
-                      <p className="text-sm text-gray-600">{dbMatch.hours}</p>
-                    </div>
-                  </div>
-                )}
-
-                {offices.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Offices & Rooms</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {offices.map((o, i) => (
-                        <span key={i} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium border border-gray-200">{o}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {!photo360 && (
-                  <div className="p-3 bg-[#FFFDF0] border border-[#F5C400]/30 rounded-xl text-center">
-                    <p className="text-xs text-gray-500">360° virtual tour coming soon for this building.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Other buildings */}
-              {pins.filter(b => b.id !== selected.id).length > 0 && (
-                <div className="border-t border-gray-100 px-5 py-4 flex-shrink-0">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2.5">Explore Other Buildings</p>
-                  <div className="space-y-1">
-                    {pins.filter(b => b.id !== selected.id).map(b => (
-                      <button key={b.id} onClick={() => setSelected(b)}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-[#FFFDF0] transition-colors text-left group">
-                        <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{ backgroundColor: b.color + "20" }}>
-                          <MapPin size={11} style={{ color: b.color }} />
-                        </div>
-                        <span className="text-sm text-gray-700 group-hover:text-[#001840] font-medium flex-1">{b.name}</span>
-                        <ChevronRight size={13} className="text-gray-300 group-hover:text-[#001840] transition-colors" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
               )}
             </div>
-          )}
+
+            {/* Building List */}
+            <div className="bg-[#102A71] rounded-2xl overflow-hidden flex flex-col max-h-[520px]">
+              <div className="px-4 py-3 border-b border-[#001840]/30">
+                <h3 className="text-[#FFDC5F] font-semibold text-sm">Buildings & Facilities</h3>
+                <p className="text-[#FFFDF0]/50 text-xs mt-0.5">
+                  {loading ? "Loading..." : `${filtered.length} found`}
+                </p>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                {loading ? (
+                  <div className="flex items-center justify-center py-10 gap-2 text-[#FFFDF0]/50 text-sm">
+                    <RefreshCw size={14} className="animate-spin" /> Loading...
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-[#FFFDF0]/50 text-sm">
+                    {buildings.length === 0
+                      ? "No buildings added yet. Admin can add buildings in the dashboard."
+                      : "No buildings match your search."}
+                  </div>
+                ) : (
+                  filtered.map((building) => {
+                    const isSelected = selectedBuilding?.id === building.id;
+                    return (
+                      <button
+                        key={building.id}
+                        onClick={() => setSelectedBuilding(isSelected ? null : building)}
+                        className={`w-full text-left px-4 py-3.5 border-b border-[#001840]/20 flex items-center gap-3 transition-colors ${
+                          isSelected ? "bg-[#F5C400]/20" : "hover:bg-[#001840]/20"
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isSelected ? "bg-[#F5C400]" : "bg-[#001840]/40"}`}>
+                          <Building2 className={`w-4 h-4 ${isSelected ? "text-[#001840]" : "text-[#FFDC5F]"}`} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`text-sm font-medium truncate ${isSelected ? "text-[#F5C400]" : "text-[#FFFDF0]"}`}>
+                            {building.name}
+                          </p>
+                          {building.category && (
+                            <p className="text-xs text-[#FFFDF0]/50 truncate">{building.category}</p>
+                          )}
+                        </div>
+                        <ChevronRight className={`w-4 h-4 shrink-0 ml-auto transition-transform ${isSelected ? "text-[#F5C400] rotate-90" : "text-[#FFFDF0]/30"}`} />
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </aside>
+
+          {/* ── Right Panel ── */}
+          <div className="flex-1 flex flex-col gap-4">
+
+            {/* Aerial Photo with pins */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-[#F5C400] rounded-full animate-pulse" />
+                  <span className="text-sm text-[#001840] font-medium">Campus Aerial View</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                  <Info className="w-3 h-3" />
+                  Click pins to explore buildings
+                </div>
+              </div>
+
+              {/* Map container with pins */}
+              <div className="relative w-full">
+                <img
+                  src={aerialPhoto}
+                  alt="Eastern Mindoro College Aerial View"
+                  className="w-full h-auto block"
+                  draggable={false}
+                />
+
+                {/* Building pins overlay */}
+                {buildings.map((building) => {
+                  const coords = getCoords(building);
+                  if (!coords) return null;
+                  const isSelected = selectedBuilding?.id === building.id;
+                  return (
+                    <button
+                      key={building.id}
+                      onClick={() => setSelectedBuilding(isSelected ? null : building)}
+                      title={building.name}
+                      style={{
+                        position: "absolute",
+                        left: `${coords.x}%`,
+                        top: `${coords.y}%`,
+                        transform: "translate(-50%, -100%)",
+                        zIndex: 10,
+                      }}
+                      className="group flex flex-col items-center"
+                    >
+                      {/* Pin */}
+                      <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shadow-lg transition-all duration-150 ${
+                        isSelected
+                          ? "bg-[#F5C400] border-[#001840] scale-125"
+                          : "bg-[#001840] border-[#F5C400] hover:scale-110 hover:bg-[#102A71]"
+                      }`}>
+                        <MapPin className={`w-4 h-4 ${isSelected ? "text-[#001840]" : "text-[#F5C400]"}`} />
+                      </div>
+                      {/* Stem */}
+                      <div className={`w-0.5 h-3 ${isSelected ? "bg-[#F5C400]" : "bg-[#001840]"}`} />
+                      {/* Label */}
+                      <div className={`absolute bottom-full mb-1 px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap shadow-lg pointer-events-none transition-all ${
+                        isSelected
+                          ? "bg-[#F5C400] text-[#001840] opacity-100"
+                          : "bg-[#001840] text-[#FFDC5F] opacity-0 group-hover:opacity-100"
+                      }`}
+                        style={{ bottom: "calc(100% + 4px)" }}
+                      >
+                        {building.name}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Building Details */}
+            {selectedBuilding ? (
+              <div ref={detailsRef} className="bg-[#102A71] text-white rounded-2xl overflow-hidden shadow-xl">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-4 p-6 pb-4">
+                  <div className="flex items-start gap-4">
+                    <div className="bg-[#F5C400] w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-lg">
+                      <Building2 className="w-6 h-6 text-[#001840]" />
+                    </div>
+                    <div>
+                      {selectedBuilding.category && (
+                        <span className="bg-[#FFDC5F] text-[#001840] text-xs font-bold px-2.5 py-0.5 rounded-full">
+                          {selectedBuilding.category}
+                        </span>
+                      )}
+                      <h3 className="font-bold text-xl leading-snug mt-1">{selectedBuilding.name}</h3>
+                      {selectedBuilding.shortName && (
+                        <p className="text-[#FFDC5F]/60 text-xs mt-0.5">Also known as: {selectedBuilding.shortName}</p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedBuilding(null)}
+                    className="shrink-0 bg-[#001840]/40 hover:bg-[#001840]/70 p-2 rounded-xl transition-colors"
+                  >
+                    <X className="w-4 h-4 text-[#FFFDF0]" />
+                  </button>
+                </div>
+
+                {/* Description */}
+                {selectedBuilding.description && (
+                  <p className="text-[#FFFDF0]/80 text-sm leading-relaxed px-6 pb-5">{selectedBuilding.description}</p>
+                )}
+
+                {/* Offices + Hours */}
+                {(parseOffices(selectedBuilding.offices).length > 0 || selectedBuilding.hours) && (
+                  <div className="grid sm:grid-cols-2 gap-5 px-6 pb-5 border-t border-[#001840]/30 pt-5">
+                    {parseOffices(selectedBuilding.offices).length > 0 && (
+                      <div>
+                        <h4 className="text-[#FFDC5F] text-xs font-bold uppercase tracking-wider mb-3">Offices / Areas</h4>
+                        <ul className="space-y-2">
+                          {parseOffices(selectedBuilding.offices).map((office, i) => (
+                            <li key={i} className="flex items-center gap-2 text-[#FFFDF0] text-sm">
+                              <div className="w-1.5 h-1.5 rounded-full bg-[#F5C400] shrink-0" />
+                              {office}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {selectedBuilding.hours && (
+                      <div>
+                        <h4 className="text-[#FFDC5F] text-xs font-bold uppercase tracking-wider mb-3">Operating Hours</h4>
+                        <p className="text-[#FFFDF0] text-sm leading-relaxed">{selectedBuilding.hours}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 360° Panorama */}
+                {selectedBuilding.imageUrl ? (
+                  <div className="px-6 pb-6 border-t border-[#001840]/30 pt-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-2 h-2 bg-[#F5C400] rounded-full animate-pulse" />
+                      <h4 className="text-[#FFDC5F] text-xs font-bold uppercase tracking-wider">
+                        360° Virtual Tour
+                      </h4>
+                      <span className="text-[#FFFDF0]/50 text-xs">— Click and drag to look around · Scroll to zoom</span>
+                    </div>
+                    <div className="rounded-xl overflow-hidden ring-2 ring-[#F5C400]/30">
+                      <PanoramaViewer
+                        src={`http://localhost:3000${selectedBuilding.imageUrl}`}
+                        height="420px"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-6 pb-6 border-t border-[#001840]/30 pt-5">
+                    <div className="bg-[#001840]/30 rounded-xl p-4 text-center">
+                      <p className="text-[#FFFDF0]/50 text-sm">No 360° photo available for this building yet.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
+                <div className="w-14 h-14 bg-[#FFFDF0] rounded-full flex items-center justify-center mx-auto mb-3">
+                  <MapPin className="w-7 h-7 text-[#F5C400]" />
+                </div>
+                <p className="text-[#001840] font-semibold mb-1">Select a Building</p>
+                <p className="text-gray-400 text-sm">Click a pin on the map or choose from the list to view details and the 360° virtual tour</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

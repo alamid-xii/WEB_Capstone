@@ -1,4 +1,4 @@
-/*
+﻿/*
 MIT License
 
 Copyright (c) 2025 Christian I. Cabrera || XianFire Framework
@@ -263,6 +263,52 @@ export const createEnrollment = async (req, res) => {
     let sscQualified = null;
     let sscClass = null;
 
+    // ── One enrollment per student ────────────────────────────────────────────
+    // Allow if the only existing record is an SSC-only application (no firstName filled yet)
+    const [existing] = await sequelize.query(
+      `SELECT id, status, firstName, sscApplied FROM enrollment_records WHERE userId = ? AND status NOT IN ('rejected') LIMIT 1`,
+      { replacements: [req.user.id] }
+    );
+    if (existing && existing.length > 0) {
+      const existingRecord = existing[0];
+      // If it's an SSC placeholder (sscApplied=1 and no name filled), update it with full form data
+      if (existingRecord.sscApplied && !existingRecord.firstName) {
+        const safeFields = ['educationLevel','gradeLevel','strand','studentType','academicYear','dateEnrolled',
+          'lrn','familyName','firstName','middleName','sex','dateOfBirth','placeOfBirth',
+          'fatherName','fatherOccupation','motherName','motherOccupation','parentsAddress',
+          'guardianName','guardianOccupation','guardianAddress','guardianTelephone',
+          'grade6School','grade6SchoolAddress','grade6Section','grade6SYStart','grade6SYEnd',
+          'grade6Average','grade6Remarks','lastHSSchool','lastHSCurriculumYear','lastHSSection',
+          'lastHSSYStart','lastHSSYEnd','admissionCredentials','studentSignature','parentGuardianSignature'];
+        const updates = safeFields.filter(k => body[k] !== undefined);
+        if (updates.length > 0) {
+          const setClause = updates.map(k => `${k} = ?`).join(', ');
+          const values = updates.map(k => k === 'admissionCredentials' ? JSON.stringify(body[k]) : body[k]);
+          await sequelize.query(
+            `UPDATE enrollment_records SET ${setClause}, updatedAt = datetime('now') WHERE id = ?`,
+            { replacements: [...values, existingRecord.id] }
+          );
+        }
+        const [[updated]] = await sequelize.query('SELECT * FROM enrollment_records WHERE id = ?', { replacements: [existingRecord.id] });
+        try { await sendEnrollmentSubmittedEmail(req.user, updated); } catch (_) {}
+        return res.status(200).json({ message: 'Enrollment updated successfully', enrollment: updated });
+      }
+      return res.status(400).json({
+        message: 'You already have an active enrollment. You cannot submit another one until your current enrollment is rejected or completed.'
+      });
+    }
+
+    // LRN uniqueness check
+    if (body.lrn) {
+      const [lrnCheck] = await sequelize.query(
+        `SELECT id FROM enrollment_records WHERE lrn = ? LIMIT 1`,
+        { replacements: [body.lrn] }
+      );
+      if (lrnCheck && lrnCheck.length > 0) {
+        return res.status(400).json({ message: 'This LRN is already registered in the system. Please check your LRN and try again.' });
+      }
+    }
+
     // SSC evaluation — only for JHS Grade 7
     if (
       body.educationLevel === 'JHS' &&
@@ -295,6 +341,10 @@ export const createEnrollment = async (req, res) => {
         ? 'Your Grade 6 average does not meet the SSC requirement (85+). You have been enrolled in the Regular class.'
         : 'Enrollment saved successfully';
 
+        // Send submission email (non-blocking)
+    try {
+      await sendEnrollmentSubmittedEmail(req.user, enrollment.toJSON());
+    } catch (_) {}
     res.status(201).json({ message, enrollment, sscQualified, status });
   } catch (error) {
     console.error('Create enrollment error:', error);
@@ -384,6 +434,28 @@ export const recordSSCResult = async (req, res) => {
  */
 export const createEnrollmentWithTOR = async (req, res) => {
   try {
+    // ── One enrollment per student ──────────────────────────────────────────
+    const [existing] = await sequelize.query(
+      `SELECT id FROM enrollment_records WHERE userId = ? AND status NOT IN ('rejected') LIMIT 1`,
+      { replacements: [req.user.id] }
+    );
+    if (existing && existing.length > 0) {
+      return res.status(400).json({
+        message: 'You already have an active enrollment. You cannot submit another one until your current enrollment is rejected or completed.'
+      });
+    }
+
+    // LRN uniqueness check
+    if (req.body.lrn) {
+      const [lrnCheck] = await sequelize.query(
+        `SELECT id FROM enrollment_records WHERE lrn = ? LIMIT 1`,
+        { replacements: [req.body.lrn] }
+      );
+      if (lrnCheck && lrnCheck.length > 0) {
+        return res.status(400).json({ message: 'This LRN is already registered in the system. Please check your LRN and try again.' });
+      }
+    }
+
     const enrollmentData = {
       userId: req.user.id,
       ...req.body,
@@ -710,7 +782,8 @@ export const downloadEnrollmentPDF = async (req, res) => {
     
     // Set appropriate headers
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="enrollment-${enrollment.id}.pdf"`);
+    const safeName = `${enrollment.firstName || ''}_${enrollment.familyName || ''}`.replace(/[^a-zA-Z0-9_-]/g, '');
+    res.setHeader('Content-Disposition', `attachment; filename="enrollment-${enrollment.id}-${safeName}.pdf"`);
     res.setHeader('Content-Length', pdfBuffer.length);
     
     // Stream PDF to response

@@ -1,4 +1,4 @@
-import { AlertCircle, FileQuestion, MapPinOff, Navigation } from "lucide-react";
+﻿import { AlertCircle, FileQuestion, MapPinOff, Navigation } from "lucide-react";
 
 export function ProblemStatement() {
   const problems = [
@@ -32,7 +32,7 @@ export function ProblemStatement() {
             Common Challenges Faced by Incoming Students
           </h2>
           <p className="text-lg text-gray-700">
-            Starting your college journey shouldn't be overwhelming. Here are the problems UniNav solves:
+            Starting your college journey shouldn't be overwhelming. Here are the problems GabAI solves:
           </p>
         </div>
 

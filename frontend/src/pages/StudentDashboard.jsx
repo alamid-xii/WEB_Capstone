@@ -72,9 +72,16 @@ export function StudentDashboard() {
     );
   }
 
-  const enrollmentTypeLabel = enrollment.educationLevel === 'SHS'
-    ? `${enrollment.gradeLevel} - ${enrollment.strand}`
-    : `${enrollment.course}${enrollment.major ? ` (${enrollment.major})` : ''}`;
+  const enrollmentTypeLabel = (() => {
+    if (enrollment.educationLevel === 'JHS') {
+      return `${enrollment.gradeLevel || 'JHS'}`;
+    }
+    if (enrollment.educationLevel === 'SHS') {
+      return `${enrollment.gradeLevel || 'SHS'}${enrollment.strand ? ` — ${enrollment.strand}` : ''}`;
+    }
+    // College
+    return `${enrollment.course || ''}${enrollment.major ? ` (${enrollment.major})` : ''}`;
+  })();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FFFDF0] via-[#FFF9E6] to-[#FFFDF0] py-8">
@@ -119,6 +126,19 @@ export function StudentDashboard() {
               <p className="text-lg font-semibold text-[#F5C400]">{totalUnits}</p>
             </div>
           </div>
+
+          {/* Section Assignment */}
+          {enrollment.sectionName && (
+            <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-3 bg-emerald-50 rounded-xl px-4 py-3">
+              <div className="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center shrink-0">
+                <BookOpen className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wider">Assigned Section</p>
+                <p className="text-xl font-bold text-emerald-800">Section {enrollment.sectionName}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Enrolled Subjects */}

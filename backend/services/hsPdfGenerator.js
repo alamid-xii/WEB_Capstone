@@ -14,15 +14,9 @@ const __dirname = path.dirname(__filename);
 export const generateHSEnrollmentPDF = (enrollment) => {
   return new Promise((resolve, reject) => {
     try {
-      // ── First pass: measure total content height ──────────────────────────
-      // We use a scratch doc just to measure pledge height accurately
-      const scratchDoc = new PDFDocument({ size: [612, 1008] });
-      scratchDoc.end(); // don't need output
-
       const L = 36, R = 576, W = 540;
       const ROW = 18, SROW = 15;
 
-      // Measure pledge section height
       const pledgeItems = [
         'Ibibigay ko ang lahat ng kailangan sa pagpapatala at ang mga ito ay hindi ko na makukuha pagkatapos na ako ay makapagpatala sapagkat ang mga ito ay magiging bahagi at pag-aari ng paaralan.',
         'MAGBABAYAD AKO SA TAKDANG ORAS NG AKING MGA OBLIGASYON TULAD NG ENTRANCE FEE, TUITION FEE AT IBA PANG DAPAT BAYARAN. Umaayon din ako na magbabayad ng ano mang pagtataas sa mga obligasyon na sinang-ayunan ng DEPED at ito ay may bisa mula sa buwan ng Hunyo.',
@@ -42,42 +36,11 @@ export const generateHSEnrollmentPDF = (enrollment) => {
         'Handa akong tumanggap ng anumang nauukol na kaparusahan kapag sinuway ko ang mga nabanggi na kautusan.',
       ];
 
-      // Use a temp doc to measure text heights
-      const measureDoc = new PDFDocument({ size: [612, 2000] });
-      measureDoc.end();
-
-      // Estimate heights using pdfkit font metrics
-      // Title line height
-      const titleText = 'Ako ay nangangako sa aking pagpapatala na aking susundin ang lahat ng mga alituntunin at regulasyon ng paaralan upang makatapos ng High School sa EASTERN MINDORO COLLEGE';
-      // At 9pt Helvetica-Bold, ~2 lines at width W-12
-      const titleH = 24; // 2 lines × 12pt
-      let pledgeItemsH = 0;
-      pledgeItems.forEach((item, i) => {
-        const text = `${i + 1}. ${item}`;
-        // Estimate: chars per line at 8.5pt Helvetica, width W-20 ≈ 520pt
-        // avg char width ~4.5pt → ~115 chars/line
-        const charsPerLine = Math.floor((W - 20) / 4.5);
-        const lines = Math.ceil(text.length / charsPerLine);
-        pledgeItemsH += lines * 11 + 2; // 11pt line height + 2pt gap
-      });
-      const pledgeBoxH = titleH + pledgeItemsH + 22; // padding top+bottom
-
-      // Fixed section heights
-      const headerH    = 60;
-      const row1H      = ROW + 4;
-      const row2H      = ROW + 4;
-      const credH      = ROW + 4;
-      const piH        = ROW * 14 + 10;
-      const sigH       = 56;
-      const footerH    = 20;
-      const totalH     = 36 + headerH + row1H + row2H + credH + piH + pledgeBoxH + sigH + footerH + 36;
-
-      // Clamp: minimum 600pt, maximum 1008pt (legal)
-      const pageH = Math.min(1008, Math.max(600, Math.ceil(totalH) + 10));
-
       // ── Real doc ──────────────────────────────────────────────────────────
+      // Page height will be calculated after measuring pledge content in the real doc.
+      // Use a generous initial height; we'll trim at the end via the actual y position.
       const doc = new PDFDocument({
-        size: [612, pageH],
+        size: [612, 1100],
         margins: { top: 36, bottom: 36, left: 36, right: 36 }
       });
 
@@ -165,30 +128,36 @@ export const generateHSEnrollmentPDF = (enrollment) => {
       y += ROW + 4;
 
       // ─── CREDENTIALS ───────────────────────────────────────────────────────
-      box(L, y, W, ROW);
-      y += 4;
-      labelBold('CREDENTIAL SUBMITTED:', L + 5, y);
+      box(L, y, W, ROW + 2);
+      const credY = y + 5;
+      labelBold('CREDENTIAL SUBMITTED:', L + 5, credY);
 
       const creds = [
         { key: 'f138',  label: 'F138',  x: 155 },
-        { key: 'f137a', label: 'F137A', x: 220 },
-        { key: 'cert',  label: 'Cert',  x: 295 },
-        { key: 'f137e', label: 'F137E', x: 365 },
+        { key: 'f137a', label: 'F137A', x: 225 },
+        { key: 'cert',  label: 'Cert',  x: 300 },
+        { key: 'f137e', label: 'F137E', x: 370 },
       ];
       creds.forEach(c => {
         const checked = Array.isArray(enrollment.admissionCredentials) &&
           enrollment.admissionCredentials.includes(c.key);
-        label(c.label, L + c.x, y);
-        const lw = doc.widthOfString(c.label);
-        box(L + c.x + lw + 4, y, 11, 11);
+        // Draw checkbox first, then label to the left of it
+        const cbX = L + c.x;
+        box(cbX, credY, 11, 11);
         if (checked) {
-          doc.fontSize(11).font('ZapfDingbats').text('4', L + c.x + lw + 5, y + 7);
+          // Use ZapfDingbats '4' which renders as a checkmark
+          doc.fontSize(10).font('ZapfDingbats').text('4', cbX + 1, credY + 8, { lineBreak: false });
+          doc.font('Helvetica'); // reset font
         }
+        // Label sits to the left of the checkbox with a small gap
+        const lw = doc.fontSize(10).font('Helvetica').widthOfString(c.label);
+        label(c.label, cbX - lw - 4, credY);
       });
-      y += ROW + 4;
+      y += ROW + 6;
 
       // ─── PERSONAL INFO BOX ─────────────────────────────────────────────────
       // Draw outer box — tall enough for all 9 items
+      const piH = ROW * 14 + 10;
       const piTop = y;
       box(L, piTop, W, piH);
       y = piTop + 6;
@@ -294,24 +263,26 @@ export const generateHSEnrollmentPDF = (enrollment) => {
       y += ROW + 4;
 
       // ─── PLEDGE BOX ────────────────────────────────────────────────────────
-      // pledgeItems and pledgeBoxH already calculated above for page sizing
+      // Render content first to get exact heights, then draw the box around it
+      const pledgeTitleText = 'Ako ay nangangako sa aking pagpapatala na aking susundin ang lahat ng mga alituntunin at regulasyon ng paaralan upang makatapos ng High School sa EASTERN MINDORO COLLEGE';
 
-      box(L, y, W, pledgeBoxH);
-      y += 6;
+      const pledgeStartY = y;
+      y += 6; // top padding inside box
 
-      // Title (bold) — measure actual height with real doc
-      const actualTitleH = doc.fontSize(9).font('Helvetica-Bold')
-        .heightOfString(
-          'Ako ay nangangako sa aking pagpapatala na aking susundin ang lahat ng mga alituntunin at regulasyon ng paaralan upang makatapos ng High School sa EASTERN MINDORO COLLEGE',
-          { width: W - 12, align: 'center' }
-        );
-      doc.text(
-        'Ako ay nangangako sa aking pagpapatala na aking susundin ang lahat ng mga alituntunin at regulasyon ng paaralan upang makatapos ng High School sa EASTERN MINDORO COLLEGE',
+      // Title — underlined bold centered
+      const titleStartY = y;
+      doc.fontSize(9).font('Helvetica-Bold').text(
+        pledgeTitleText,
         L + 6, y, { width: W - 12, align: 'center', lineGap: 1 }
       );
-      y += actualTitleH + 6;
+      const actualTitleH = doc.fontSize(9).font('Helvetica-Bold')
+        .heightOfString(pledgeTitleText, { width: W - 12, align: 'center', lineGap: 1 });
+      y += actualTitleH + 4;
 
-      // Pledge items — measure each with real doc
+      // Underline the title
+      line(L + 6, titleStartY + actualTitleH + 1, R - 6, titleStartY + actualTitleH + 1);
+
+      // Pledge items
       doc.fontSize(8.5).font('Helvetica');
       pledgeItems.forEach((item, i) => {
         const text = `${i + 1}. ${item}`;
@@ -319,9 +290,13 @@ export const generateHSEnrollmentPDF = (enrollment) => {
         doc.text(text, L + 10, y, { width: W - 20, align: 'justify', lineGap: 0.5 });
         y += h + 2;
       });
-      y += 8;
+      y += 6; // bottom padding
+
+      // Now draw the box around all the content
+      box(L, pledgeStartY, W, y - pledgeStartY);
 
       // ─── SIGNATURES BOX ────────────────────────────────────────────────────
+      const sigH = 56;
       box(L, y, W, sigH);
       y += 14;
 

@@ -1,6 +1,7 @@
-import { BrowserRouter, Routes, Route } from "react-router";
+﻿import { BrowserRouter, Routes, Route } from "react-router";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { ScrollToTop } from "./components/ScrollToTop";
 import { Root } from "./Root";
 import { Home } from "./pages/Home";
 import { QAChat } from "./pages/QAChat";
@@ -20,12 +21,15 @@ import { LevelSelection } from "./pages/LevelSelection";
 import { SubjectSelection } from "./pages/SubjectSelection";
 import { StudentDashboard } from "./pages/StudentDashboard";
 import { SectionManagement } from "./pages/SectionManagement";
+import { ResubmitPage } from "./pages/ResubmitPage";
+import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { Toaster } from "sonner";
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <ScrollToTop />
         <Toaster richColors position="top-right" />
         <Routes>
           {/* Pages with Navbar + Footer layout */}
@@ -92,6 +96,14 @@ export default function App() {
               }
             />
             <Route
+              path="resubmit/:id"
+              element={
+                <ProtectedRoute>
+                  <ResubmitPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="student-dashboard/:id"
               element={
                 <ProtectedRoute>
@@ -103,6 +115,7 @@ export default function App() {
 
           {/* Standalone pages without layout */}
           <Route path="/login" element={<Login />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/signup" element={<SignUp />} />
           <Route 
             path="/admin" 

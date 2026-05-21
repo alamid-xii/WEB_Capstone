@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { MapPin, Eye, EyeOff, LogIn, Mail, Lock, AlertCircle, Loader2, CheckCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -33,6 +33,10 @@ export function Login() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (data.needsVerification) {
+          navigate("/verify-email", { state: { email: data.email } });
+          return;
+        }
         throw new Error(data.message || "Login failed");
       }
 
@@ -45,10 +49,11 @@ export function Login() {
       } else if (data.user.role === "registrar") {
         navigate("/registrar");
       } else {
-        navigate("/");
+        navigate("/my-enrollments");
       }
     } catch (err) {
-      setError(err.message || "Invalid email or password. Please try again.");
+      const msg = err.message || "";
+      setError(msg || "Invalid email or password. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -65,7 +70,7 @@ export function Login() {
             </div>
             <div className="text-left">
               <span className="font-bold text-2xl tracking-wide text-white">
-                UniNav
+                GabAI
               </span>
               <p className="text-xs text-[#FFDC5F] leading-none tracking-wider">
                 Eastern Mindoro College

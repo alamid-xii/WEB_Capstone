@@ -5,6 +5,7 @@ import {
   getRegistrarEnrollments,
   verifyEnrollment,
   returnEnrollment,
+  approveEnrollment,
   scheduleSSCExam,
   recordSSCResult,
   evaluateTOR,
@@ -23,6 +24,9 @@ router.get('/enrollments', getRegistrarEnrollments);
 
 // Verify enrollment (submitted → verified)
 router.post('/enrollments/:id/verify', verifyEnrollment);
+
+// Approve enrollment (submitted/verified → approved)
+router.post('/enrollments/:id/approve', approveEnrollment);
 
 // Return enrollment to student with remarks
 router.post('/enrollments/:id/return', returnEnrollment);

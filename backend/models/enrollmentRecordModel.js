@@ -67,7 +67,8 @@ export const EnrollmentRecord = sequelize.define("EnrollmentRecord", {
   },
   lrn: {
     type: DataTypes.STRING(20),
-    allowNull: true  // Learner Reference Number
+    allowNull: true,  // Learner Reference Number
+    unique: true      // Each LRN must belong to only one enrollment record
   },
   parentsAddress: {
     type: DataTypes.TEXT,

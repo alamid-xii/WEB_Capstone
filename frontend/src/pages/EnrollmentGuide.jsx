@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import {
   CheckCircle2,
   Circle,
@@ -391,7 +391,7 @@ export function EnrollmentGuide() {
                       <div className="flex gap-2">
                         <AlertCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
                         <div>
-                          <p className="text-xs font-semibold text-blue-900 mb-1">💡 Pro Tip</p>
+                          <p className="text-xs font-semibold text-blue-900 mb-1">Pro Tip</p>
                           <p className="text-xs text-blue-800">{step.tips}</p>
                         </div>
                       </div>

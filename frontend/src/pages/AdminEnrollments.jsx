@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { 
@@ -116,7 +116,11 @@ export function AdminEnrollments() {
       if (!res.ok) throw new Error(data.error || 'Failed to approve');
 
       if (data.sectionAssignment?.assigned) {
-        toast.success(`Enrollment approved & assigned to section ${data.sectionAssignment.section.code}!`);
+        const subCount = data.sectionAssignment.subjectsEnrolled;
+        toast.success(
+          `Enrollment approved & assigned to section ${data.sectionAssignment.section.code}!`,
+          { description: subCount > 0 ? `${subCount} subject(s) auto-enrolled` : 'No curriculum subjects found — add subjects in Academic Setup', duration: 6000 }
+        );
       } else if (data.sectionAssignment?.reason) {
         toast.success('Enrollment approved!');
         toast.warning(`No section auto-assigned: ${data.sectionAssignment.reason}`, { duration: 6000 });
@@ -418,7 +422,7 @@ export function AdminEnrollments() {
                           <p className="text-sm text-gray-500">{enrollment.studentNumber}</p>
                           {enrollment.sscApplied && (
                             <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full">
-                              🔬 SSC Applicant
+                              SSC Applicant
                             </span>
                           )}
                         </div>
@@ -450,7 +454,7 @@ export function AdminEnrollments() {
                         <StatusBadge status={enrollment.status} />
                         {enrollment.sectionName && (
                           <p className="text-xs text-purple-600 font-medium mt-1">
-                            📚 {enrollment.sectionName}
+                            {enrollment.sectionName}
                           </p>
                         )}
                       </td>
@@ -498,7 +502,7 @@ export function AdminEnrollments() {
                               ) : null}
                             </>
                           )}
-                          {enrollment.status === 'submitted' && (
+                          {enrollment.status === 'verified' && (
                             <>
                               <button
                                 onClick={() => setShowApprovalModal({ id: enrollment.id, action: 'approve' })}
@@ -596,7 +600,7 @@ export function AdminEnrollments() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-gray-900 mb-4">
-              {showSSCModal.action === 'schedule' ? '📅 Schedule SSC Entrance Exam' : '📝 Record SSC Exam Result'}
+              {showSSCModal.action === 'schedule' ? 'Schedule SSC Entrance Exam' : 'Record SSC Exam Result'}
             </h3>
             
             {showSSCModal.action === 'schedule' ? (
@@ -693,14 +697,17 @@ function StatCard({ icon: Icon, label, value, color }) {
 
 function StatusBadge({ status }) {
   const configs = {
-    draft: { color: 'bg-gray-100 text-gray-700', label: 'Draft' },
-    submitted: { color: 'bg-blue-100 text-blue-700', label: 'Submitted' },
-    pending_exam: { color: 'bg-yellow-100 text-yellow-700', label: 'Pending SSC Exam' },
-    approved: { color: 'bg-green-100 text-green-700', label: 'Approved' },
-    rejected: { color: 'bg-red-100 text-red-700', label: 'Rejected' }
+    draft:             { color: 'bg-gray-100 text-gray-700',    label: 'Draft' },
+    submitted:         { color: 'bg-blue-100 text-blue-700',    label: 'Submitted' },
+    pending_exam:      { color: 'bg-yellow-100 text-yellow-700',label: 'Pending SSC Exam' },
+    verified:          { color: 'bg-purple-100 text-purple-700',label: 'Verified' },
+    returned:          { color: 'bg-orange-100 text-orange-700',label: 'Returned' },
+    approved:          { color: 'bg-green-100 text-green-700',  label: 'Approved' },
+    subjects_enrolled: { color: 'bg-teal-100 text-teal-700',   label: 'Subjects Enrolled' },
+    enrolled:          { color: 'bg-emerald-100 text-emerald-700', label: 'Enrolled' },
+    rejected:          { color: 'bg-red-100 text-red-700',      label: 'Rejected' },
   };
   const config = configs[status] || configs.draft;
-  
   return (
     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${config.color}`}>
       {config.label}

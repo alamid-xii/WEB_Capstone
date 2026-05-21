@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link, useLocation } from "react-router";
 import { MessageCircle, X, Sparkles, ArrowRight } from "lucide-react";
 
@@ -21,7 +21,7 @@ export function FloatingChat() {
                 <Sparkles className="w-4 h-4 text-[#001840]" />
               </div>
               <div>
-                <p className="text-white font-semibold text-sm">UniNav Assistant</p>
+                <p className="text-white font-semibold text-sm">GabAI Assistant</p>
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 bg-[#FFDC5F] rounded-full animate-pulse" />
                   <span className="text-[#FFDC5F] text-xs">Online · Ready to help</span>
@@ -43,7 +43,7 @@ export function FloatingChat() {
                 <Sparkles className="w-4 h-4 text-[#FFDC5F]" />
               </div>
               <div className="bg-[#FFDC5F]/30 border border-[#FFDC5F]/40 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-[#001840] leading-relaxed">
-                Hi! 👋 I'm your UniNav Admission Assistant. Ask me anything about enrollment, requirements, or campus navigation!
+                Hi! I'm your GabAI Admission Assistant. Ask me anything about enrollment, requirements, or campus navigation!
               </div>
             </div>
 

@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3000/api';
+﻿const API_URL = 'http://localhost:3000/api';
 
 // Get auth token from localStorage
 const getAuthToken = () => {
@@ -18,7 +18,7 @@ export const createEnrollmentWithTOR = async (formData) => {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || `Failed to save enrollment (${response.status})`);
+    throw new Error(error.message || error.error || `Failed to save enrollment (${response.status})`);
   }
 
   return response.json();
@@ -27,10 +27,8 @@ export const createEnrollmentWithTOR = async (formData) => {
 // Create enrollment
 export const createEnrollment = async (enrollmentData) => {
   try {
-    console.log('API Call - Sending enrollment data:', enrollmentData);
     
     const token = getAuthToken();
-    console.log('Auth token:', token ? 'Present' : 'Missing');
     
     if (!token) {
       throw new Error('Authentication required. Please log in.');
@@ -45,8 +43,6 @@ export const createEnrollment = async (enrollmentData) => {
       body: JSON.stringify(enrollmentData)
     });
     
-    console.log('API Response status:', response.status);
-    console.log('API Response headers:', Object.fromEntries(response.headers.entries()));
     
     if (!response.ok) {
       let error;
@@ -65,11 +61,10 @@ export const createEnrollment = async (enrollmentData) => {
         throw new Error(errorMessages);
       }
       
-      throw new Error(error.message || `Failed to save enrollment (${response.status})`);
+      throw new Error(error.message || error.error || `Failed to save enrollment (${response.status})`);
     }
     
     const result = await response.json();
-    console.log('API Success Response:', result);
     return result;
     
   } catch (error) {
@@ -100,7 +95,7 @@ export const getEnrollments = async (filters = {}) => {
   
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.message || 'Failed to fetch enrollments');
+    throw new Error(error.message || error.error || 'Failed to fetch enrollments');
   }
   
   return response.json();
@@ -116,7 +111,7 @@ export const getEnrollmentById = async (id) => {
   
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.message || 'Failed to fetch enrollment');
+    throw new Error(error.message || error.error || 'Failed to fetch enrollment');
   }
   
   return response.json();
@@ -132,7 +127,7 @@ export const getUserEnrollments = async (userId) => {
   
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.message || 'Failed to fetch enrollments');
+    throw new Error(error.message || error.error || 'Failed to fetch enrollments');
   }
   
   return response.json();
@@ -151,7 +146,7 @@ export const updateEnrollment = async (id, enrollmentData) => {
   
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.message || 'Failed to update enrollment');
+    throw new Error(error.message || error.error || 'Failed to update enrollment');
   }
   
   return response.json();
@@ -170,7 +165,7 @@ export const updateEnrollmentStatus = async (id, status) => {
   
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.message || 'Failed to update status');
+    throw new Error(error.message || error.error || 'Failed to update status');
   }
   
   return response.json();
@@ -187,7 +182,7 @@ export const deleteEnrollment = async (id) => {
   
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.message || 'Failed to delete enrollment');
+    throw new Error(error.message || error.error || 'Failed to delete enrollment');
   }
   
   return response.json();
@@ -203,7 +198,7 @@ export const downloadEnrollmentPDF = async (id) => {
   
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.message || 'Failed to download PDF');
+    throw new Error(error.message || error.error || 'Failed to download PDF');
   }
   
   const blob = await response.blob();
@@ -270,5 +265,19 @@ export const deleteEnrollmentDocument = async (enrollmentId, docId) => {
     throw new Error(error.error || 'Failed to delete document');
   }
 
+  return response.json();
+};
+
+// Resubmit a returned enrollment
+export const resubmitEnrollment = async (enrollmentId) => {
+  const token = getAuthToken();
+  const response = await fetch(`${API_URL}/enrollments/${enrollmentId}/resubmit`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to resubmit enrollment');
+  }
   return response.json();
 };

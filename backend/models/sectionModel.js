@@ -10,12 +10,17 @@ export const Section = sequelize.define("Section", {
   course: { 
     type: DataTypes.STRING(20), 
     allowNull: false,
-    comment: 'Course/Program code (SHS, BSIS, BSBA, BSED, BSCrim)'
+    comment: 'Course/Program code (JHS, SHS, BSIS, BSBA, BSED, BSCrim, BEED)'
   },
   yearLevel: { 
     type: DataTypes.INTEGER, 
     allowNull: false,
     comment: 'Year/Grade level: 7-12 for HS, 1-4 for College'
+  },
+  strand: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    comment: 'SHS strand (STEM, ABM, HUMSS, TVL, Sports, Arts and Design)'
   },
   semester: { 
     type: DataTypes.ENUM('1st', '2nd', 'Summer'), 

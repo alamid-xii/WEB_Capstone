@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Sparkles, ThumbsUp, ThumbsDown, Loader2, Copy, Trash2, Check, AlertCircle } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -21,7 +21,7 @@ const initialMessages = [
   {
     id: 1,
     from: "bot",
-    text: "Hello! 👋 I'm your AI-powered UniNav Admission Assistant. I can help you in English, Filipino, or any language you prefer!\n\nI'm here to assist with:\n• Admission requirements\n• Enrollment procedures\n• Campus information\n• Scholarships and fees\n• And much more!\n\nHow can I help you today?",
+    text: "Hello! I'm your AI-powered GabAI Admission Assistant. I can help you in English, Filipino, or any language you prefer!\n\nI'm here to assist with:\n• Admission requirements\n• Enrollment procedures\n• Campus information\n• Scholarships and fees\n• And much more!\n\nHow can I help you today?",
     time: getTime(),
     isComplete: true
   },
@@ -346,7 +346,7 @@ export function QAChat() {
                             </button>
                           </div>
                         ) : (
-                          <p className="text-xs text-green-600 font-medium">✓ Thank you for your feedback!</p>
+                          <p className="text-xs text-green-600 font-medium">Thank you for your feedback!</p>
                         )}
                       </div>
                     )}

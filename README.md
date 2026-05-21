@@ -1,4 +1,4 @@
-# UniNav - Eastern Mindoro College Navigation System
+﻿# GabAI - Eastern Mindoro College Navigation System
 
 A professional campus navigation and admission assistance system built with React and Express.js for your capstone project.
 

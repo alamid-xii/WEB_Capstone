@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { getUserEnrollments, downloadEnrollmentPDF, deleteEnrollment } from '../services/enrollmentApi';
 import { 
-  FileText, Download, Eye, Trash2, Plus, 
+  FileText, Download, Eye, Trash2, Plus, Upload, 
   CheckCircle, Clock, XCircle, AlertCircle, Calendar, BookOpen 
 } from 'lucide-react';
 
@@ -72,6 +72,16 @@ export function MyEnrollments() {
         color: 'bg-yellow-100 text-yellow-700 border-yellow-300',
         label: 'Pending SSC Exam'
       },
+      verified: {
+        icon: CheckCircle,
+        color: 'bg-purple-100 text-purple-700 border-purple-300',
+        label: 'Verified'
+      },
+      returned: {
+        icon: AlertCircle,
+        color: 'bg-orange-100 text-orange-700 border-orange-300',
+        label: 'Returned'
+      },
       approved: {
         icon: CheckCircle,
         color: 'bg-green-100 text-green-700 border-green-300',
@@ -116,6 +126,8 @@ export function MyEnrollments() {
       ? enrollments.filter(e => e.status === 'enrolled' || e.status === 'subjects_enrolled')
       : enrollments.filter(e => (e.status || 'draft') === filterStatus);
   
+  const hasActiveEnrollment = enrollments.some(e => e.status !== 'rejected');
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FFFDF0] via-[#FFF9E6] to-[#FFFDF0] py-8">
       <div className="max-w-6xl mx-auto px-4">
@@ -126,24 +138,6 @@ export function MyEnrollments() {
               <h1 className="text-3xl font-bold text-[#001840] mb-2">My Enrollments</h1>
               <p className="text-gray-600">Manage and track your enrollment forms</p>
             </div>
-            <button
-              onClick={() => navigate('/enroll')}
-              className="px-6 py-3 bg-[#102A71] text-white rounded-lg hover:bg-[#001840] transition-all font-medium flex items-center gap-2 shadow-lg"
-            >
-              <Plus className="w-5 h-5" />
-              Create New Enrollment
-            </button>
-          </div>
-          
-          {/* Filter Tabs */}
-          <div className="flex flex-wrap gap-2">
-            <FilterTab label="All" count={enrollments.length} active={filterStatus === 'all'} onClick={() => setFilterStatus('all')} />
-            <FilterTab label="Draft" count={enrollments.filter(e => (e.status || 'draft') === 'draft').length} active={filterStatus === 'draft'} onClick={() => setFilterStatus('draft')} />
-            <FilterTab label="Submitted" count={enrollments.filter(e => e.status === 'submitted').length} active={filterStatus === 'submitted'} onClick={() => setFilterStatus('submitted')} />
-            <FilterTab label="Pending Exam" count={enrollments.filter(e => e.status === 'pending_exam').length} active={filterStatus === 'pending_exam'} onClick={() => setFilterStatus('pending_exam')} />
-            <FilterTab label="Approved" count={enrollments.filter(e => e.status === 'approved').length} active={filterStatus === 'approved'} onClick={() => setFilterStatus('approved')} />
-            <FilterTab label="Enrolled" count={enrollments.filter(e => e.status === 'enrolled' || e.status === 'subjects_enrolled').length} active={filterStatus === 'enrolled'} onClick={() => setFilterStatus('enrolled')} />
-            <FilterTab label="Rejected" count={enrollments.filter(e => e.status === 'rejected').length} active={filterStatus === 'rejected'} onClick={() => setFilterStatus('rejected')} />
           </div>
         </div>
         
@@ -162,7 +156,7 @@ export function MyEnrollments() {
                   ? "You haven't created any enrollment forms yet" 
                   : `No ${filterStatus} enrollments found`}
               </p>
-              {filterStatus === 'all' && (
+              {filterStatus === 'all' && !hasActiveEnrollment && (
                 <button
                   onClick={() => navigate('/enroll')}
                   className="px-6 py-2.5 bg-[#102A71] text-white rounded-lg hover:bg-[#001840] transition-all font-medium"
@@ -220,6 +214,82 @@ export function MyEnrollments() {
                                 </span>
                               )}
                             </div>
+
+                            {/* Section Assignment Banner */}
+                            {enrollment.status === 'enrolled' && enrollment.sectionName && (
+                              <div className="mt-3 flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5">
+                                <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shrink-0">
+                                  <BookOpen className="w-4 h-4 text-white" />
+                                </div>
+                                <div>
+                                  <p className="text-xs text-emerald-600 font-medium">Assigned Section</p>
+                                  <p className="text-sm font-bold text-emerald-800">Section {enrollment.sectionName}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Returned remarks */}
+                            {enrollment.status === 'returned' && enrollment.registrar_remarks && (
+                              <div className="mt-3 flex items-start gap-2.5 bg-orange-50 border border-orange-200 rounded-lg px-4 py-2.5">
+                                <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
+                                <div>
+                                  <p className="text-xs text-orange-600 font-medium">Returned — Action Required</p>
+                                  <p className="text-sm text-orange-800">{enrollment.registrar_remarks}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Rejection reason */}
+                            {enrollment.status === 'rejected' && enrollment.admin_comments && (
+                              <div className="mt-3 flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+                                <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                                <div>
+                                  <p className="text-xs text-red-600 font-medium">Rejection Reason</p>
+                                  <p className="text-sm text-red-800">{enrollment.admin_comments}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* SSC Exam Info */}
+                            {enrollment.status === 'pending_exam' && (
+                              <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 space-y-1.5">
+                                <p className="text-xs font-bold text-yellow-800 uppercase tracking-wide">Special Science Class (SSC) Exam</p>
+                                {enrollment.sscExamDate ? (
+                                  <>
+                                    <div className="flex items-center justify-between text-sm">
+                                      <span className="text-yellow-700">Exam Date</span>
+                                      <span className="font-semibold text-yellow-900">{new Date(enrollment.sscExamDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                                    </div>
+                                    {enrollment.sscPassingScore && (
+                                      <div className="flex items-center justify-between text-sm">
+                                        <span className="text-yellow-700">Passing Score</span>
+                                        <span className="font-semibold text-yellow-900">{enrollment.sscPassingScore}</span>
+                                      </div>
+                                    )}
+                                    <p className="text-xs text-yellow-600 mt-1">Please come on time and bring your school ID.</p>
+                                  </>
+                                ) : (
+                                  <p className="text-sm text-yellow-700">Your exam schedule has not been set yet. The registrar will notify you soon.</p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* SSC Result */}
+                            {enrollment.sscResult && (
+                              <div className={`mt-3 rounded-lg px-4 py-3 border ${enrollment.sscResult === 'passed' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                <p className="text-xs font-bold uppercase tracking-wide mb-1 ${enrollment.sscResult === 'passed' ? 'text-green-800' : 'text-red-800'}">SSC Exam Result</p>
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className={enrollment.sscResult === 'passed' ? 'text-green-700' : 'text-red-700'}>
+                                    {enrollment.sscResult === 'passed' ? 'Passed — You qualify for the Special Science Class' : 'Did not pass — You will be enrolled in the Regular class'}
+                                  </span>
+                                  {enrollment.sscExamScore && (
+                                    <span className={`font-bold text-base ${enrollment.sscResult === 'passed' ? 'text-green-800' : 'text-red-800'}`}>
+                                      {enrollment.sscExamScore}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                             
                             {/* Progress Bar */}
                             <div className="mt-3">
@@ -250,6 +320,16 @@ export function MyEnrollments() {
                           View Details
                         </button>
                         
+                        {enrollment.status === 'returned' && (
+                          <button
+                            onClick={() => navigate(/resubmit/)}
+                            className="flex-1 lg:flex-none px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-all font-medium flex items-center justify-center gap-2"
+                          >
+                            <Upload className="w-4 h-4" />
+                            Fix and Resubmit
+                          </button>
+                        )}
+
                         {enrollment.status === 'approved' && (
                           <button
                             onClick={() => navigate(`/subject-selection/${enrollment.id}`)}

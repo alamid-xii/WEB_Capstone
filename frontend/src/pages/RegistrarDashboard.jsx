@@ -50,38 +50,38 @@ function Modal({ title, onClose, children }) {
   );
 }
 
-// ── Verify Modal ──────────────────────────────────────────────────────────────
-function VerifyModal({ enrollment, onClose, onSuccess }) {
+// ── Approve Modal (replaces Verify — registrar now verifies AND approves) ──────
+function ApproveModal({ enrollment, onClose, onSuccess }) {
   const [remarks, setRemarks] = useState('');
   const [loading, setLoading] = useState(false);
   async function submit(e) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch(`${API}/registrar/enrollments/${enrollment.id}/verify`, {
+      const res = await fetch(`${API}/registrar/enrollments/${enrollment.id}/approve`, {
         method: 'POST', headers: tok(), body: JSON.stringify({ remarks }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message || 'Failed');
-      toast.success('Enrollment verified');
+      toast.success('Enrollment verified and approved');
       onSuccess();
     } catch (err) { toast.error(err.message); }
     finally { setLoading(false); }
   }
   return (
-    <Modal title="Verify Enrollment" onClose={onClose}>
+    <Modal title="Verify & Approve Enrollment" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
-        <p className="text-sm text-gray-600">Documents reviewed and complete for <span className="font-medium text-[#001840]">{enrollment.firstName} {enrollment.familyName}</span>.</p>
+        <p className="text-sm text-gray-600">Documents reviewed and complete for <span className="font-medium text-[#001840]">{enrollment.firstName} {enrollment.familyName}</span>. This will approve the enrollment directly.</p>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Remarks (optional)</label>
           <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={3}
-            placeholder="Add notes for the admin..."
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-400 resize-none" />
+            placeholder="Add notes..."
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200 focus:border-green-400 resize-none" />
         </div>
         <div className="flex gap-3">
           <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">Cancel</button>
-          <button type="submit" disabled={loading} className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-60">
-            {loading ? 'Verifying...' : 'Confirm Verify'}
+          <button type="submit" disabled={loading} className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-60">
+            {loading ? 'Approving...' : 'Verify & Approve'}
           </button>
         </div>
       </form>
@@ -151,7 +151,7 @@ function SSCScheduleModal({ enrollment, onClose, onSuccess }) {
   return (
     <Modal title="Schedule SSC Entrance Exam" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
-        <p className="text-sm text-gray-600">Schedule entrance exam for <span className="font-medium text-[#001840]">{enrollment.firstName} {enrollment.familyName}</span>.</p>
+        <p className="text-sm text-gray-600">Schedule entrance exam for <span className="font-medium text-[#001840]">{enrollment.firstName || enrollment.user_name || 'this student'} {enrollment.familyName || ''}</span>.</p>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Exam Date <span className="text-red-500">*</span></label>
           <input type="date" value={examDate} onChange={e => setExamDate(e.target.value)} required
@@ -196,7 +196,7 @@ function SSCResultModal({ enrollment, onClose, onSuccess }) {
   return (
     <Modal title="Record SSC Exam Result" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
-        <p className="text-sm text-gray-600">Record exam score for <span className="font-medium text-[#001840]">{enrollment.firstName} {enrollment.familyName}</span>.</p>
+        <p className="text-sm text-gray-600">Record exam score for <span className="font-medium text-[#001840]">{enrollment.firstName || enrollment.user_name || 'this student'} {enrollment.familyName || ''}</span>.</p>
         {enrollment.sscPassingScore && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 text-sm text-yellow-800">
             Passing score: <span className="font-semibold">{enrollment.sscPassingScore}</span>
@@ -335,11 +335,17 @@ function EnrollmentDetail({ enrollmentId, enrollment: rowData, onClose, onAction
   const isCollege = level === 'COLLEGE';
   const isTransferee = e.enrollmentType === 'transferee';
 
-  const canVerify = ['submitted', 'returned'].includes(status);
+  const canApprove = ['submitted', 'returned'].includes(status);
   const canReturn = ['submitted', 'verified'].includes(status);
-  const canScheduleSSC = isJHS && e.sscApplied && e.sscQualified == 1 && ['submitted', 'verified'].includes(status) && !e.sscExamDate;
-  const canRecordSSC = status === 'pending_exam';
+  // For SSC-only applications: allow scheduling if sscApplied and pending_exam, regardless of sscQualified
+  const canScheduleSSC = isJHS && e.sscApplied && status === 'pending_exam' && !e.sscExamDate;
+  const canRecordSSC = isJHS && status === 'pending_exam' && !!e.sscExamDate && !e.sscExamScore;
   const canEvaluateTOR = isCollege && isTransferee;
+
+  // Display name: use enrollment name fields if filled, otherwise fall back to user account name
+  const displayName = (e.firstName || e.familyName)
+    ? `${e.firstName || ''} ${e.familyName || ''}`.trim()
+    : (e.user_name || e.userEmail || `Student #${e.userId || e.id}`);
 
   return (
     <div className="border-t border-gray-100 bg-slate-50/70">
@@ -347,7 +353,7 @@ function EnrollmentDetail({ enrollmentId, enrollment: rowData, onClose, onAction
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
-            <p className="font-semibold text-[#001840]">{e.firstName} {e.familyName}</p>
+            <p className="font-semibold text-[#001840]">{displayName}</p>
             <p className="text-xs text-gray-400 mt-0.5">
               {e.educationLevel} &bull; {e.course || e.gradeLevel || '—'} &bull; {e.academicYear || e.semester || '—'}
             </p>
@@ -363,11 +369,13 @@ function EnrollmentDetail({ enrollmentId, enrollment: rowData, onClose, onAction
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Student Info</p>
             <dl className="space-y-2 text-sm">
               {[
-                ['Email', e.email],
+                ['Name', displayName !== `Student #${e.userId || e.id}` ? displayName : null],
+                ['Email', e.email || e.user_email || e.userEmail],
                 ['Mobile', e.mobileNumber],
                 ['Enrollment Type', e.enrollmentType],
                 ['Student Status', e.studentStatus],
                 ['Date of Birth', e.dateOfBirth],
+                ['SSC Applied', e.sscApplied ? 'Yes' : null],
               ].filter(([, v]) => v).map(([label, value]) => (
                 <div key={label} className="flex justify-between gap-2">
                   <dt className="text-gray-400 flex-shrink-0">{label}</dt>
@@ -395,12 +403,8 @@ function EnrollmentDetail({ enrollmentId, enrollment: rowData, onClose, onAction
                         <span className="text-gray-700">{docLabel}</span>
                       </div>
                       {uploaded ? (
-                        <a
-                          href={`${BACKEND}${uploaded.filePath}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-medium transition-colors"
-                        >
+                        <a href={`${BACKEND}${uploaded.filePath}`} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-medium transition-colors">
                           <FileText size={11} /> View
                         </a>
                       ) : (
@@ -410,12 +414,28 @@ function EnrollmentDetail({ enrollmentId, enrollment: rowData, onClose, onAction
                   );
                 })}
               </ul>
+            ) : uploadedDocs.length > 0 ? (
+              // SSC applications: no admissionCredentials but have uploaded docs
+              <ul className="space-y-2">
+                {uploadedDocs.map(doc => (
+                  <li key={doc.id} className="flex items-center justify-between gap-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={13} className="text-green-500" />
+                      <span className="text-gray-700">{doc.documentLabel || doc.documentType}</span>
+                    </div>
+                    <a href={`${BACKEND}${doc.filePath}`} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-medium transition-colors">
+                      <FileText size={11} /> View
+                    </a>
+                  </li>
+                ))}
+              </ul>
             ) : (
               <p className="text-sm text-gray-400 italic">No documents on record</p>
             )}
 
-            {/* Standalone uploaded docs not tied to a credential checkbox */}
-            {uploadedDocs.filter(d => {
+            {/* Standalone uploaded docs not tied to a credential checkbox — only show when admissionCredentials has items */}
+            {Array.isArray(e.admissionCredentials) && e.admissionCredentials.length > 0 && uploadedDocs.filter(d => {
               const creds = Array.isArray(e.admissionCredentials) ? e.admissionCredentials : [];
               return !creds.some(c => (typeof c === 'string' ? c : c.key || c.type) === d.documentType);
             }).map(doc => (
@@ -506,10 +526,10 @@ function EnrollmentDetail({ enrollmentId, enrollment: rowData, onClose, onAction
 
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-2 pt-1">
-          {canVerify && (
-            <button onClick={() => setActiveModal('verify')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700 transition-colors">
-              <CheckCircle2 size={13} /> Verify
+          {canApprove && (
+            <button onClick={() => setActiveModal('approve')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors">
+              <CheckCircle2 size={13} /> Verify & Approve
             </button>
           )}
           {canReturn && (
@@ -543,7 +563,7 @@ function EnrollmentDetail({ enrollmentId, enrollment: rowData, onClose, onAction
         </div>
       </div>
 
-      {activeModal === 'verify' && <VerifyModal enrollment={e} onClose={() => setActiveModal(null)} onSuccess={handleModalSuccess} />}
+      {activeModal === 'approve' && <ApproveModal enrollment={e} onClose={() => setActiveModal(null)} onSuccess={handleModalSuccess} />}
       {activeModal === 'return' && <ReturnModal enrollment={e} onClose={() => setActiveModal(null)} onSuccess={handleModalSuccess} />}
       {activeModal === 'ssc-schedule' && <SSCScheduleModal enrollment={e} onClose={() => setActiveModal(null)} onSuccess={handleModalSuccess} />}
       {activeModal === 'ssc-result' && <SSCResultModal enrollment={e} onClose={() => setActiveModal(null)} onSuccess={handleModalSuccess} />}
@@ -558,7 +578,7 @@ function OverviewTab({ stats, recentEnrollments, onRefresh }) {
   const cards = [
     { label: 'Pending Verification', value: s.submitted ?? 0, icon: Clock, bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-100' },
     { label: 'Pending SSC Exam',     value: s.pending_exam ?? 0, icon: Calendar, bg: 'bg-yellow-50', text: 'text-yellow-600', border: 'border-yellow-100' },
-    { label: 'Verified (Awaiting Admin)', value: s.verified ?? 0, icon: CheckCircle2, bg: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-100' },
+    { label: 'Approved / Enrolled',  value: (s.approved ?? 0) + (s.enrolled ?? 0), icon: CheckCircle2, bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-100' },
     { label: 'Returned to Student',  value: s.returned ?? 0, icon: RotateCcw, bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-100' },
   ];
 
@@ -599,7 +619,11 @@ function OverviewTab({ stats, recentEnrollments, onRefresh }) {
                 <tr><td colSpan={5} className="px-6 py-10 text-center text-gray-400 text-sm">No recent enrollments</td></tr>
               ) : recentEnrollments.slice(0, 10).map(e => (
                 <tr key={e.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-6 py-3 font-medium text-gray-800">{e.firstName} {e.familyName}</td>
+                  <td className="px-6 py-3 font-medium text-gray-800">
+                    {(e.firstName || e.familyName)
+                      ? `${e.firstName || ''} ${e.familyName || ''}`.trim()
+                      : (e.user_name || `Student #${e.userId || e.id}`)}
+                  </td>
                   <td className="px-6 py-3 text-gray-500">{e.educationLevel}</td>
                   <td className="px-6 py-3 text-gray-500 max-w-[160px] truncate">{e.course || e.gradeLevel || '—'}</td>
                   <td className="px-6 py-3"><StatusBadge status={e.status} /></td>
@@ -714,7 +738,11 @@ function EnrollmentsTab({ onActionSuccess }) {
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 flex-wrap">
-                      <span className="font-medium text-gray-800 text-sm">{enrollment.firstName} {enrollment.familyName}</span>
+                      <span className="font-medium text-gray-800 text-sm">
+                        {(enrollment.firstName || enrollment.familyName)
+                          ? `${enrollment.firstName || ''} ${enrollment.familyName || ''}`.trim()
+                          : (enrollment.user_name || `Student #${enrollment.userId || enrollment.id}`)}
+                      </span>
                       <StatusBadge status={enrollment.status} />
                     </div>
                     <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 flex-wrap">

@@ -1,6 +1,6 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { MapPin, Eye, EyeOff, UserPlus, Mail, Lock, User, Phone, AlertCircle, Loader2, CheckCircle } from "lucide-react";
+import { MapPin, Eye, EyeOff, UserPlus, Mail, Lock, User, Phone, AlertCircle, Loader2, CheckCircle, Check, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -19,8 +19,18 @@ export function SignUp() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const { login } = useAuth();
+  const [registered, setRegistered] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
   const navigate = useNavigate();
+
+  // Password requirement checks
+  const pwRules = {
+    length:    formData.password.length >= 12,
+    uppercase: /[A-Z]/.test(formData.password),
+    number:    /[0-9]/.test(formData.password),
+  };
+  const pwValid = Object.values(pwRules).every(Boolean);
+  const showRules = formData.password.length > 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,8 +42,8 @@ export function SignUp() {
       return;
     }
 
-    if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters long");
+    if (!pwValid) {
+      setError("Password does not meet the requirements.");
       return;
     }
 
@@ -63,11 +73,9 @@ export function SignUp() {
         throw new Error(data.message || "Registration failed");
       }
 
-      // Use auth context to update login state
-      login(data.user, data.token);
-
-      // Navigate to home page
-      navigate("/");
+      setRegisteredEmail(formData.email);
+      setRegistered(true);
+      navigate("/verify-email", { state: { email: formData.email } });
     } catch (err) {
       setError(err.message || "Registration failed. Please try again.");
     } finally {
@@ -82,6 +90,42 @@ export function SignUp() {
     });
   };
 
+
+  if (registered) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#001840] via-[#102A71] to-[#001840] flex items-center justify-center p-4">
+        <div className="w-full max-w-md text-center">
+          <div className="bg-[#FFFDF0] rounded-2xl shadow-2xl p-8 border-2 border-[#F5C400]/20">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-8 h-8 text-green-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-[#001840] mb-2">Check Your Email</h2>
+            <p className="text-gray-600 mb-2">We sent a verification link to:</p>
+            <p className="font-semibold text-[#102A71] mb-4">{registeredEmail}</p>
+            <p className="text-sm text-gray-500 mb-6">Click the link in the email to verify your account. The link expires in 24 hours.</p>
+            <Link to="/login" className="block w-full py-3 bg-[#102A71] text-white rounded-xl font-semibold hover:bg-[#001840] transition-all">
+              Go to Login
+            </Link>
+            <button
+              onClick={async () => {
+                try {
+                  await fetch("http://localhost:3000/api/auth/resend-verification", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: registeredEmail })
+                  });
+                  alert("Verification email resent!");
+                } catch (_) {}
+              }}
+              className="mt-3 text-sm text-[#102A71] hover:underline"
+            >
+              Resend verification email
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#001840] via-[#102A71] to-[#001840] flex items-center justify-center p-4 py-8">
       <div className="w-full max-w-2xl">
@@ -93,7 +137,7 @@ export function SignUp() {
             </div>
             <div className="text-left">
               <span className="font-bold text-2xl tracking-wide text-white">
-                UniNav
+                GabAI
               </span>
               <p className="text-xs text-[#FFDC5F] leading-none tracking-wider">
                 Eastern Mindoro College
@@ -104,7 +148,7 @@ export function SignUp() {
             Create Your Account
           </h1>
           <p className="text-sm text-[#FFDC5F]">
-            Join UniNav to navigate your admission journey
+            Join GabAI to navigate your admission journey
           </p>
         </div>
 
@@ -185,10 +229,7 @@ export function SignUp() {
             <div className="grid sm:grid-cols-2 gap-5">
               {/* Password Field */}
               <div className="space-y-2">
-                <Label
-                  htmlFor="password"
-                  className="text-[#001840] font-semibold"
-                >
+                <Label htmlFor="password" className="text-[#001840] font-semibold">
                   Password
                 </Label>
                 <div className="relative">
@@ -209,21 +250,14 @@ export function SignUp() {
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[#102A71] hover:text-[#001840] transition-colors"
                     tabIndex="-1"
                   >
-                    {showPassword ? (
-                      <EyeOff className="w-5 h-5" />
-                    ) : (
-                      <Eye className="w-5 h-5" />
-                    )}
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
               </div>
 
               {/* Confirm Password Field */}
               <div className="space-y-2">
-                <Label
-                  htmlFor="confirmPassword"
-                  className="text-[#001840] font-semibold"
-                >
+                <Label htmlFor="confirmPassword" className="text-[#001840] font-semibold">
                   Confirm Password
                 </Label>
                 <div className="relative">
@@ -244,15 +278,34 @@ export function SignUp() {
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[#102A71] hover:text-[#001840] transition-colors"
                     tabIndex="-1"
                   >
-                    {showConfirmPassword ? (
-                      <EyeOff className="w-5 h-5" />
-                    ) : (
-                      <Eye className="w-5 h-5" />
-                    )}
+                    {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
               </div>
             </div>
+
+            {/* Password Requirements */}
+            {showRules && (
+              <div className="flex flex-wrap gap-x-5 gap-y-1.5 px-1">
+                {[
+                  { met: pwRules.length,    label: "At least 12 characters" },
+                  { met: pwRules.uppercase, label: "1 uppercase letter" },
+                  { met: pwRules.number,    label: "1 number" },
+                ].map(({ met, label }) => (
+                  <div key={label} className="flex items-center gap-1.5">
+                    <span className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center transition-colors ${met ? "bg-green-500" : "bg-gray-300"}`}>
+                      {met
+                        ? <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+                        : <X className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+                      }
+                    </span>
+                    <span className={`text-xs transition-colors ${met ? "text-green-700 font-medium" : "text-gray-500"}`}>
+                      {label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Terms & Conditions */}
             <div className="flex items-start gap-3 pt-2">

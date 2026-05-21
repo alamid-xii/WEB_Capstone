@@ -1,42 +1,44 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { MapPin, Menu, X, ArrowRight, LogIn, LogOut, User, BookOpen, LayoutDashboard } from "lucide-react";
+import { MapPin, Menu, X, ArrowRight, LogIn, LogOut, User, ChevronDown } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
-const publicLinks = [
+const navLinks = [
   { label: "Home", to: "/" },
-  { label: "Q&A Assistant", to: "/qa" },
+  { label: "Chatbot", to: "/qa" },
+  { label: "Virtual Tour", to: "/ar-navigation" },
   { label: "Enrollment Guide", to: "/enrollment-guide" },
-  { label: "Campus Map", to: "/campus-map" },
 ];
 
-const studentLinks = [
-  { label: "Home", to: "/" },
-  { label: "My Enrollments", to: "/my-enrollments" },
-  { label: "Q&A Assistant", to: "/qa" },
-  { label: "Enrollment Guide", to: "/enrollment-guide" },
-  { label: "Campus Map", to: "/campus-map" },
-];
+// Role-based dashboard links
+function getDashboardLink(role) {
+  if (role === "admin") return "/admin";
+  if (role === "registrar") return "/registrar";
+  return "/my-enrollments";
+}
+
+function getDashboardLabel(role) {
+  if (role === "admin") return "Admin Dashboard";
+  if (role === "registrar") return "Registrar Dashboard";
+  return "My Enrollments";
+}
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
-  const { user, isLoggedIn, logout } = useAuth();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, isLoggedIn, logout } = useAuth();
 
-  const handleLogout = async () => {
+  async function handleLogout() {
     await logout();
+    setUserMenuOpen(false);
+    setOpen(false);
     navigate("/");
-  };
-
-  const isAdmin = user?.role === "admin";
-  const isRegistrar = user?.role === "registrar";
-  const isStudent = isLoggedIn && !isAdmin && !isRegistrar;
-
-  const navLinks = isStudent ? studentLinks : publicLinks;
+  }
 
   return (
-    <header className="bg-[#001840] text-white sticky top-0 z-50 shadow-lg">
+    <header className="bg-[#001840] text-white fixed top-0 left-0 right-0 z-50 shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 lg:h-20">
 
@@ -46,7 +48,7 @@ export function Navbar() {
               <MapPin className="w-5 h-5 text-[#001840]" />
             </div>
             <div>
-              <span className="font-bold text-xl tracking-wide">UniNav</span>
+              <span className="font-bold text-xl tracking-wide">GabAI</span>
               <p className="text-[9px] text-[#FFDC5F] leading-none tracking-widest uppercase">
                 Eastern Mindoro College
               </p>
@@ -78,59 +80,66 @@ export function Navbar() {
 
           {/* Right side */}
           <div className="flex items-center gap-3">
-            {isLoggedIn ? (
-              <>
-                <div className="hidden md:flex items-center gap-2 bg-[#102A71]/50 px-3 py-2 rounded-lg">
-                  <User className="w-4 h-4 text-[#FFDC5F]" />
-                  <span className="text-sm text-white font-medium">{user?.name}</span>
-                  {(isAdmin || isRegistrar) && (
-                    <span className="text-xs bg-[#F5C400] text-[#001840] px-1.5 py-0.5 rounded font-bold uppercase">
-                      {user?.role}
-                    </span>
-                  )}
-                </div>
+            {isLoggedIn && user ? (
+              /* Logged in — show user dropdown */
+              <div className="relative">
                 <button
-                  onClick={handleLogout}
-                  className="hidden md:flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-md"
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="hidden md:flex items-center gap-2 bg-[#102A71] hover:bg-[#102A71]/80 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150"
                 >
-                  <LogOut className="w-4 h-4" />
-                  Logout
+                  <div className="w-7 h-7 bg-[#F5C400] rounded-full flex items-center justify-center shrink-0">
+                    <User className="w-4 h-4 text-[#001840]" />
+                  </div>
+                  <span className="text-[#FFFDF0] max-w-[120px] truncate">{user.name || user.email}</span>
+                  <ChevronDown className={`w-4 h-4 text-[#FFDC5F] transition-transform ${userMenuOpen ? "rotate-180" : ""}`} />
                 </button>
-              </>
-            ) : (
-              <Link
-                to="/login"
-                className="hidden md:flex items-center gap-2 border-2 border-[#FFDC5F] text-[#FFDC5F] hover:bg-[#FFDC5F] hover:text-[#001840] px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-md"
-              >
-                <LogIn className="w-4 h-4" />
-                Login
-              </Link>
-            )}
 
-            {/* Role-based CTA */}
-            {isAdmin && (
-              <Link to="/admin"
-                className="hidden lg:flex items-center gap-2 bg-[#F5C400] hover:bg-[#FFDC5F] text-[#001840] px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors shadow">
-                <LayoutDashboard className="w-4 h-4" /> Admin Panel
-              </Link>
-            )}
-            {isRegistrar && (
-              <Link to="/registrar"
-                className="hidden lg:flex items-center gap-2 bg-[#F5C400] hover:bg-[#FFDC5F] text-[#001840] px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors shadow">
-                <LayoutDashboard className="w-4 h-4" /> Registrar Panel
-              </Link>
-            )}
-            {isStudent && (
-              <Link to="/enroll"
-                className="hidden lg:flex items-center gap-2 bg-[#F5C400] hover:bg-[#FFDC5F] text-[#001840] px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors shadow">
-                <BookOpen className="w-4 h-4" /> Enroll Now
-              </Link>
-            )}
-            {!isLoggedIn && (
-              <Link to="/enroll"
-                className="hidden lg:flex items-center gap-2 bg-[#F5C400] hover:bg-[#FFDC5F] text-[#001840] px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors shadow">
-                Get Started <ArrowRight className="w-4 h-4" />
-              </Link>
+                {/* Dropdown */}
+                {userMenuOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50">
+                    {/* User info */}
+                    <div className="px-4 py-3 bg-[#FFFDF0] border-b border-gray-100">
+                      <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">{user.role}</p>
+                      <p className="text-sm font-semibold text-[#001840] truncate">{user.name || user.email}</p>
+                    </div>
+                    {/* Dashboard link */}
+                    <Link
+                      to={getDashboardLink(user.role)}
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-3 text-sm text-[#001840] hover:bg-[#FFFDF0] transition-colors font-medium"
+                    >
+                      <User className="w-4 h-4 text-[#102A71]" />
+                      {getDashboardLabel(user.role)}
+                    </Link>
+                    {/* Logout */}
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors font-medium border-t border-gray-100"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Not logged in — show Login + Get Started */
+              <>
+                <Link
+                  to="/login"
+                  className="hidden md:flex items-center gap-2 border border-[#FFDC5F] text-[#FFDC5F] hover:bg-[#FFDC5F] hover:text-[#001840] px-4 py-2 rounded-lg font-semibold text-sm transition-colors duration-150"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Login
+                </Link>
+                <Link
+                  to="/qa"
+                  className="hidden lg:flex items-center gap-2 bg-[#F5C400] hover:bg-[#FFDC5F] text-[#001840] px-5 py-2 rounded-lg font-semibold text-sm transition-colors duration-150 shadow"
+                >
+                  Get Started
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </>
             )}
 
             {/* Hamburger */}
@@ -159,8 +168,10 @@ export function Navbar() {
                   key={link.to}
                   to={link.to}
                   onClick={() => setOpen(false)}
-                  className={`px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                    active ? "bg-[#102A71] text-[#FFDC5F]" : "text-[#FFFDF0] hover:bg-[#102A71]/60"
+                  className={`px-4 py-3 rounded-lg text-sm font-medium transition-colors duration-150 ${
+                    active
+                      ? "bg-[#102A71] text-[#FFDC5F]"
+                      : "text-[#FFFDF0] hover:bg-[#102A71]/60"
                   }`}
                 >
                   {link.label}
@@ -168,51 +179,55 @@ export function Navbar() {
               );
             })}
 
-            {isLoggedIn ? (
+            {isLoggedIn && user ? (
               <>
-                <div className="px-4 py-3 text-sm border-t border-[#102A71] mt-2 bg-[#102A71]/30 rounded-lg flex items-center gap-2">
-                  <User className="w-4 h-4 text-[#FFDC5F]" />
-                  <span className="text-white font-medium">{user?.name}</span>
-                  {(isAdmin || isRegistrar) && (
-                    <span className="text-xs bg-[#F5C400] text-[#001840] px-1.5 py-0.5 rounded font-bold uppercase ml-auto">
-                      {user?.role}
-                    </span>
-                  )}
+                {/* User info */}
+                <div className="px-4 py-3 mt-2 bg-[#102A71] rounded-lg">
+                  <p className="text-xs text-[#FFDC5F] font-medium uppercase tracking-wider">{user.role}</p>
+                  <p className="text-sm font-semibold text-white truncate">{user.name || user.email}</p>
                 </div>
-                <button
-                  onClick={() => { handleLogout(); setOpen(false); }}
-                  className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-5 py-3 rounded-lg font-semibold text-sm transition-all"
+                <Link
+                  to={getDashboardLink(user.role)}
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium text-[#FFFDF0] hover:bg-[#102A71]/60 transition-colors"
                 >
-                  <LogOut className="w-4 h-4" /> Logout
+                  <User className="w-4 h-4" />
+                  {getDashboardLabel(user.role)}
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium text-red-300 hover:bg-red-900/20 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
                 </button>
               </>
             ) : (
-              <Link to="/login" onClick={() => setOpen(false)}
-                className="mt-2 flex items-center justify-center gap-2 border-2 border-[#FFDC5F] text-[#FFDC5F] hover:bg-[#FFDC5F] hover:text-[#001840] px-5 py-3 rounded-lg font-semibold text-sm transition-all">
-                <LogIn className="w-4 h-4" /> Login
-              </Link>
-            )}
-
-            {isAdmin && (
-              <Link to="/admin" onClick={() => setOpen(false)}
-                className="mt-2 flex items-center justify-center gap-2 bg-[#F5C400] hover:bg-[#FFDC5F] text-[#001840] px-5 py-3 rounded-lg font-semibold text-sm transition-colors">
-                <LayoutDashboard className="w-4 h-4" /> Admin Panel
-              </Link>
-            )}
-            {isRegistrar && (
-              <Link to="/registrar" onClick={() => setOpen(false)}
-                className="mt-2 flex items-center justify-center gap-2 bg-[#F5C400] hover:bg-[#FFDC5F] text-[#001840] px-5 py-3 rounded-lg font-semibold text-sm transition-colors">
-                <LayoutDashboard className="w-4 h-4" /> Registrar Panel
-              </Link>
-            )}
-            {(isStudent || !isLoggedIn) && (
-              <Link to="/enroll" onClick={() => setOpen(false)}
-                className="mt-2 flex items-center justify-center gap-2 bg-[#F5C400] hover:bg-[#FFDC5F] text-[#001840] px-5 py-3 rounded-lg font-semibold text-sm transition-colors">
-                <BookOpen className="w-4 h-4" /> {isStudent ? "Enroll Now" : "Get Started"}
-              </Link>
+              <>
+                <Link
+                  to="/login"
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium text-[#FFDC5F] border border-[#FFDC5F]/40 hover:bg-[#102A71]/60 transition-colors"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Login
+                </Link>
+                <Link
+                  to="/qa"
+                  onClick={() => setOpen(false)}
+                  className="mt-1 flex items-center justify-center gap-2 bg-[#F5C400] hover:bg-[#FFDC5F] text-[#001840] px-5 py-3 rounded-lg font-semibold text-sm transition-colors duration-150"
+                >
+                  Get Started <ArrowRight className="w-4 h-4" />
+                </Link>
+              </>
             )}
           </div>
         </div>
+      )}
+
+      {/* Close user menu on outside click */}
+      {userMenuOpen && (
+        <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
       )}
     </header>
   );

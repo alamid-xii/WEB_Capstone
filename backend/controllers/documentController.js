@@ -1,4 +1,4 @@
-import multer from "multer";
+﻿import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { EnrollmentDocument } from "../models/enrollmentDocumentModel.js";
@@ -13,21 +13,8 @@ const CREDENTIAL_LABELS = {
   marriageCert: "Marriage Certificate",
 };
 
-// Multer storage — saves to public/uploads/documents/enrollment-{id}/
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const enrollmentId = req.params.id;
-    const dir = path.join(process.cwd(), "public", "uploads", "documents", `enrollment-${enrollmentId}`);
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const docType = file.fieldname; // fieldname = documentType key
-    const ext = path.extname(file.originalname);
-    const unique = `${docType}-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
-    cb(null, unique + ext);
-  },
-});
+// Use memory storage — files are saved to disk manually in the controller
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
   const allowed = ["image/jpeg", "image/png", "image/jpg", "application/pdf"];
@@ -41,16 +28,14 @@ const fileFilter = (req, file, cb) => {
 export const uploadDocuments = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
 // POST /api/enrollments/:id/documents
-// Accepts multiple files, each field name = documentType key
 export const uploadEnrollmentDocuments = async (req, res) => {
   try {
     const enrollmentId = parseInt(req.params.id);
 
-    // Verify enrollment exists and belongs to user (or is admin/registrar)
     const enrollment = await EnrollmentRecord.findByPk(enrollmentId);
     if (!enrollment) {
       return res.status(404).json({ error: "Enrollment not found" });
@@ -66,26 +51,33 @@ export const uploadEnrollmentDocuments = async (req, res) => {
       return res.status(400).json({ error: "No files uploaded" });
     }
 
+    // Ensure upload directory exists
+    const uploadDir = path.join(process.cwd(), "public", "uploads", "documents", `enrollment-${enrollmentId}`);
+    fs.mkdirSync(uploadDir, { recursive: true });
+
     const saved = [];
 
     for (const [docType, files] of Object.entries(req.files)) {
-      const file = files[0]; // one file per credential type
+      const file = files[0];
 
       // Remove old document of same type if exists
       const existing = await EnrollmentDocument.findOne({
         where: { enrollmentId, documentType: docType },
       });
       if (existing) {
-        // Delete old file from disk
         const oldPath = path.join(process.cwd(), "public", existing.filePath);
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
         await existing.destroy();
       }
 
-      // Store relative path (from public/)
-      const relativePath = file.path
-        .replace(path.join(process.cwd(), "public"), "")
-        .replace(/\\/g, "/");
+      // Save buffer to disk
+      const ext = path.extname(file.originalname) || ".jpg";
+      const filename = `${docType}-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
+      const filePath = path.join(uploadDir, filename);
+      fs.writeFileSync(filePath, file.buffer);
+
+      // Store relative path from public/
+      const relativePath = `/uploads/documents/enrollment-${enrollmentId}/${filename}`;
 
       const doc = await EnrollmentDocument.create({
         enrollmentId,
@@ -103,7 +95,7 @@ export const uploadEnrollmentDocuments = async (req, res) => {
     res.json({ message: "Documents uploaded successfully", documents: saved });
   } catch (error) {
     console.error("Upload documents error:", error);
-    res.status(500).json({ error: "Failed to upload documents" });
+    res.status(500).json({ error: "Failed to upload documents", details: error.message });
   }
 };
 
@@ -151,7 +143,6 @@ export const deleteEnrollmentDocument = async (req, res) => {
     const doc = await EnrollmentDocument.findOne({ where: { id: docId, enrollmentId } });
     if (!doc) return res.status(404).json({ error: "Document not found" });
 
-    // Delete file from disk
     const fullPath = path.join(process.cwd(), "public", doc.filePath);
     if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
 
