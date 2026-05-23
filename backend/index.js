@@ -1,4 +1,4 @@
-/*
+﻿/*
     MIT License
     
     Copyright (c) 2025 Christian I. Cabrera || XianFire Framework
@@ -27,17 +27,30 @@ import express from "express";
 import path from "path";
 import session from "express-session";
 import flash from "connect-flash";
+import cors from "cors";
+import dotenv from "dotenv";
 import router from "./routes/index.js";
 import fs from 'fs';
 import hbs from "hbs";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import { sequelize } from "./models/db.js";
+import "./models/enrollmentDocumentModel.js"; // ensure table is synced
+
+// Load environment variables
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// CORS configuration
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -102,6 +115,33 @@ fs.readdir(partialsDir, (err, files) => {
 });
 
 app.use("/", router);
+
+// Sync only new tables, don't alter existing ones (SQLite doesn't support ALTER well)
+sequelize.sync({ alter: false }).catch(err => console.error("DB sync error:", err));
+
+// Manually add new columns if they don't exist yet (safe for SQLite)
+async function addMissingColumns() {
+  try {
+    const queries = [
+      `ALTER TABLE enrollment_records ADD COLUMN sectionId INTEGER`,
+      `ALTER TABLE enrollment_records ADD COLUMN sectionName VARCHAR(50)`,
+      `ALTER TABLE sections ADD COLUMN strand VARCHAR(50)`,
+      `ALTER TABLE users ADD COLUMN isVerified BOOLEAN DEFAULT 0`,
+      `ALTER TABLE users ADD COLUMN verificationToken VARCHAR(100)`,
+      `ALTER TABLE users ADD COLUMN verificationExpires DATETIME`,
+    ];
+    for (const q of queries) {
+      try {
+        await sequelize.query(q);
+      } catch (_) {
+        // Column already exists — ignore
+      }
+    }
+  } catch (err) {
+    console.error('Column migration error:', err.message);
+  }
+}
+addMissingColumns();
 
 export default app;
 

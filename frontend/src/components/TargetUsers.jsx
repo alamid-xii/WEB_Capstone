@@ -1,4 +1,4 @@
-import { GraduationCap, Users, MapPinned, Globe } from "lucide-react";
+﻿import { GraduationCap, Users, MapPinned, Globe } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 
 export function TargetUsers() {
@@ -40,7 +40,7 @@ export function TargetUsers() {
             </h2>
             
             <p className="text-lg text-gray-700 mb-8">
-              UniNav is designed to support all students at Eastern Mindoro College, ensuring accessible and inclusive education for everyone.
+              GabAI is designed to support all students at Eastern Mindoro College, ensuring accessible and inclusive education for everyone.
             </p>
 
             <div className="space-y-6">

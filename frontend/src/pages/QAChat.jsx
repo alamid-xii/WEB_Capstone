@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Clock, ChevronRight, Sparkles, BookOpen, FileText, Calendar, GraduationCap } from "lucide-react";
-
+﻿import { useState, useRef, useEffect } from "react";
+import { Send, Bot, User, Sparkles, ThumbsUp, ThumbsDown, Loader2, Copy, Trash2, Check, AlertCircle } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 const quickFAQs = [
   "What are the admission requirements?",
@@ -9,29 +9,9 @@ const quickFAQs = [
   "What courses are available?",
   "Where is the registrar's office?",
   "How to get a student ID?",
+  "What are the tuition fees?",
+  "Are scholarships available?",
 ];
-
-const categories = [
-  { icon: FileText, label: "Requirements" },
-  { icon: Calendar, label: "Deadlines" },
-  { icon: GraduationCap, label: "Programs" },
-  { icon: BookOpen, label: "Enrollment" },
-];
-
-const botResponses = {
-  "What are the admission requirements?":
-    "For admission to Eastern Mindoro College, you'll need: (1) Original Form 138/SF9 with school seal, (2) Certificate of Good Moral Character, (3) PSA Birth Certificate (original + photocopy), (4) 2x2 ID photos (4 pieces), (5) Medical Certificate from licensed physician, and (6) Accomplished admission form. For transferees, additionally provide a Transfer Credential/Honorable Dismissal.",
-  "When is the enrollment deadline?":
-    "The enrollment period for Academic Year 2025–2026 is as follows:\n• New Students: June 2 – June 20, 2025\n• Returning Students: May 26 – June 13, 2025\n• Transferees: June 2 – June 20, 2025\n\nLate enrollment may be subject to additional fees. Please visit the Registrar's Office for extensions.",
-  "How do I submit documents?":
-    "You may submit documents in two ways:\n\n1. In-Person: Bring original documents and photocopies to the Registrar's Office (Admin Building, Ground Floor) during office hours (Mon–Fri, 8AM–5PM).\n\n2. Online Pre-submission: Upload scanned copies via the EMC Student Portal at portal.emc.edu.ph. Physical originals must still be presented during actual enrollment.",
-  "What courses are available?":
-    "Eastern Mindoro College offers programs across several departments:\n\n• College of Education (BSEd, BEEd)\n• College of Business (BSA, BSBA)\n• College of Engineering & Technology\n• College of Arts & Sciences\n• College of Nursing\n• Technical-Vocational Programs\n\nVisit the Campus Map page to locate each department building!",
-  "Where is the registrar's office?":
-    "The Registrar's Office is located at the Ground Floor of the Administration Building (Dr. Angel Francisco Hall). Office Hours: Monday–Friday, 8:00 AM – 5:00 PM. You can use our AR Navigation feature to get real-time directions from any point on campus!",
-  "How to get a student ID?":
-    "To get your Student ID:\n1. Complete enrollment and pay the ID fee at the Cashier\n2. Bring your official receipt to the Guidance Office (2nd Floor, Admin Building)\n3. Have your photo taken on-site\n4. ID release is within 5–7 working days\n\nBring your Enrollment Assessment Form as proof of enrollment.",
-};
 
 function getTime() {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -41,218 +21,426 @@ const initialMessages = [
   {
     id: 1,
     from: "bot",
-    text: "Hello! 👋 I'm your UniNav Admission Assistant. I'm here to help you with everything about Eastern Mindoro College — from admission requirements to campus navigation. How can I assist you today?",
+    text: "Hello! I'm your AI-powered GabAI Admission Assistant. I can help you in English, Filipino, or any language you prefer!\n\nI'm here to assist with:\n• Admission requirements\n• Enrollment procedures\n• Campus information\n• Scholarships and fees\n• And much more!\n\nHow can I help you today?",
     time: getTime(),
+    isComplete: true
   },
 ];
 
 export function QAChat() {
-  const [messages, setMessages] = useState(initialMessages);
+  const { user } = useAuth();
+  const chatKey = user ? `chatHistory_${user.id}` : 'chatHistory_guest';
+
+  const [messages, setMessages] = useState(() => {
+    const key = user ? `chatHistory_${user.id}` : 'chatHistory_guest';
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : initialMessages;
+  });
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  const bottomRef = useRef(null);
+  const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+  const [copiedId, setCopiedId] = useState(null);
+  const [suggestedQuestions, setSuggestedQuestions] = useState([]);
+  const [error, setError] = useState(null);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const chatContainerRef = useRef(null);
+
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  };
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typing]);
+    scrollToBottom();
+  }, [messages]);
 
-  function sendMessage(text) {
-    if (!text.trim()) return;
-    const userMsg = { id: Date.now(), from: "user", text, time: getTime() };
+  // Save chat history to localStorage (scoped to current user)
+  useEffect(() => {
+    localStorage.setItem(chatKey, JSON.stringify(messages));
+  }, [messages, chatKey]);
+
+  // Reset chat when user changes (e.g. logout or switch account)
+  useEffect(() => {
+    const saved = localStorage.getItem(chatKey);
+    setMessages(saved ? JSON.parse(saved) : initialMessages);
+    setSuggestedQuestions([]);
+    setError(null);
+  }, [chatKey]);
+
+  // Typewriter effect
+  async function typewriterEffect(fullText, messageId) {
+    const words = fullText.split(' ');
+    let currentText = '';
+    
+    for (let i = 0; i < words.length; i++) {
+      currentText += (i > 0 ? ' ' : '') + words[i];
+      
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { ...msg, text: currentText, isTyping: true }
+          : msg
+      ));
+      
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId 
+        ? { ...msg, isTyping: false, isComplete: true }
+        : msg
+    ));
+  }
+
+  // Build conversation history for context
+  function getConversationHistory() {
+    return messages
+      .filter(m => m.from && m.text)
+      .map(m => ({
+        role: m.from === 'user' ? 'user' : 'assistant',
+        content: m.text
+      }));
+  }
+
+  async function sendMessage(text) {
+    if (!text.trim() || typing) return;
+    
+    setError(null);
+    const userMsg = { id: Date.now(), from: "user", text, time: getTime(), isComplete: true };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setTyping(true);
+    setSuggestedQuestions([]);
 
-    setTimeout(() => {
-      const response =
-        botResponses[text] ||
-        "Thank you for your question! For more specific information, please visit the Registrar's Office or call (043) 123-4567. You can also check the EMC official website at www.emc.edu.ph for the latest updates.";
-      const botMsg = { id: Date.now() + 1, from: "bot", text: response, time: getTime() };
+    try {
+      const response = await fetch("http://localhost:3000/api/chat/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          message: text, 
+          sessionId,
+          conversationHistory: getConversationHistory()
+        }),
+        credentials: "include"
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.response || "Failed to get response");
+      }
+      
+      const botMsgId = Date.now() + 1;
+      const botMsg = {
+        id: botMsgId,
+        from: "bot",
+        text: "",
+        time: getTime(),
+        confidence: data.confidence,
+        chatLogId: data.chatLogId,
+        isTyping: true,
+        isComplete: false
+      };
+      
       setMessages((prev) => [...prev, botMsg]);
       setTyping(false);
-    }, 1200);
+      
+      await typewriterEffect(data.response, botMsgId);
+      
+      if (data.suggestedQuestions && data.suggestedQuestions.length > 0) {
+        setSuggestedQuestions(data.suggestedQuestions);
+      }
+      
+    } catch (error) {
+      console.error("Chat error:", error);
+      setError(error.message);
+      
+      const errorMsgId = Date.now() + 1;
+      const errorMsg = {
+        id: errorMsgId,
+        from: "bot",
+        text: "",
+        time: getTime(),
+        isError: true,
+        isTyping: true,
+        isComplete: false
+      };
+      
+      setMessages((prev) => [...prev, errorMsg]);
+      setTyping(false);
+      
+      await typewriterEffect(
+        "I apologize, but I'm having trouble connecting right now. This could be due to:\n\n• Network connectivity issues\n• Server maintenance\n• High traffic\n\nPlease try again in a moment, or contact the Registrar's Office at (043) 123-4567 for immediate assistance.",
+        errorMsgId
+      );
+    } finally {
+      inputRef.current?.focus();
+    }
+  }
+
+  async function handleFeedback(messageId, helpful) {
+    const message = messages.find(m => m.id === messageId);
+    if (!message || !message.chatLogId) return;
+
+    try {
+      await fetch("http://localhost:3000/api/chat/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatLogId: message.chatLogId, helpful }),
+        credentials: "include"
+      });
+      
+      setMessages(prev => prev.map(m => 
+        m.id === messageId ? { ...m, feedbackGiven: true, feedbackType: helpful ? 'helpful' : 'not-helpful' } : m
+      ));
+    } catch (error) {
+      console.error("Feedback error:", error);
+    }
+  }
+
+  function copyMessage(text, id) {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
+  function clearChat() {
+    if (confirm("Are you sure you want to clear the chat history?")) {
+      setMessages(initialMessages);
+      setSuggestedQuestions([]);
+      setError(null);
+      localStorage.removeItem(chatKey);
+    }
+  }
+
+  function handleKeyPress(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(input);
+    }
   }
 
   return (
-    <div className="min-h-screen bg-[#FFFDF0] flex flex-col">
-      {/* Page Header */}
-      <div className="bg-[#001840] text-white px-4 sm:px-6 lg:px-8 py-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-[#F5C400] w-10 h-10 rounded-xl flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-[#001840]" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">Admission Assistant</h1>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="w-2 h-2 bg-[#FFDC5F] rounded-full animate-pulse" />
-                <span className="text-[#FFDC5F] text-sm">Online · NLP-Powered</span>
+    <div className="min-h-screen bg-gradient-to-br from-[#FFFDF0] via-[#FFF9E6] to-[#FFFDF0] flex flex-col">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-[#001840] via-[#102A71] to-[#001840] text-white px-4 sm:px-6 lg:px-8 py-6 shadow-2xl">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-4">
+              <div className="bg-gradient-to-br from-[#F5C400] to-[#FFDC5F] w-16 h-16 rounded-2xl flex items-center justify-center shadow-2xl">
+                <Sparkles className="w-8 h-8 text-[#001840]" />
+              </div>
+              <div className="flex-1">
+                <h1 className="text-3xl font-bold mb-1">AI Assistant</h1>
+                <p className="text-[#FFDC5F] text-sm">Powered by Advanced AI • Multilingual Support</p>
               </div>
             </div>
+            {messages.length > 1 && (
+              <button
+                onClick={clearChat}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 text-red-200 rounded-lg transition-all text-sm font-medium"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Clear Chat</span>
+              </button>
+            )}
           </div>
-          <p className="text-[#FFFDF0]/70 text-sm mt-2 max-w-xl">
-            Ask me anything about admissions, enrollment, requirements, or campus navigation. I'm available 24/7.
+          <p className="text-[#FFFDF0]/90 max-w-3xl text-sm leading-relaxed">
+            Get instant, accurate answers about admissions, enrollment, and campus life. Ask me anything in your preferred language!
           </p>
         </div>
       </div>
 
-      {/* Main Layout */}
-      <div className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex gap-6 h-[calc(100vh-260px)] min-h-[500px]">
+      {/* Error Banner */}
+      {error && (
+        <div className="bg-red-50 border-b border-red-200 px-4 sm:px-6 lg:px-8 py-3">
+          <div className="max-w-6xl mx-auto flex items-center gap-2 text-red-800 text-sm">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>Connection error: {error}</span>
+          </div>
+        </div>
+      )}
 
-          {/* Sidebar */}
-          <aside className="hidden md:flex flex-col w-64 shrink-0 gap-4">
-            {/* Categories */}
-            <div className="bg-[#102A71] rounded-2xl p-5">
-              <h3 className="text-[#FFDC5F] font-semibold mb-4 text-sm uppercase tracking-wider">Categories</h3>
-              <div className="grid grid-cols-2 gap-2">
-                {categories.map((cat) => {
-                  const Icon = cat.icon;
-                  return (
-                    <button
-                      key={cat.label}
-                      className="flex flex-col items-center gap-2 bg-[#001840]/40 hover:bg-[#F5C400]/20 p-3 rounded-xl transition-colors duration-150 group"
-                    >
-                      <Icon className="w-5 h-5 text-[#FFDC5F] group-hover:text-[#F5C400]" />
-                      <span className="text-[#FFFDF0] text-xs">{cat.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Deadlines Badge */}
-            <div className="bg-[#FFDC5F] rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Clock className="w-5 h-5 text-[#001840]" />
-                <h3 className="text-[#001840] font-semibold text-sm">Upcoming Deadlines</h3>
-              </div>
-              <ul className="space-y-2">
-                <li className="bg-[#001840]/10 rounded-lg p-2">
-                  <p className="text-[#001840] text-xs font-semibold">New Student Enrollment</p>
-                  <p className="text-[#001840]/70 text-xs">June 2 – 20, 2025</p>
-                </li>
-                <li className="bg-[#001840]/10 rounded-lg p-2">
-                  <p className="text-[#001840] text-xs font-semibold">Document Submission</p>
-                  <p className="text-[#001840]/70 text-xs">June 20, 2025</p>
-                </li>
-                <li className="bg-[#001840]/10 rounded-lg p-2">
-                  <p className="text-[#001840] text-xs font-semibold">Entrance Exam</p>
-                  <p className="text-[#001840]/70 text-xs">May 28, 2025</p>
-                </li>
-              </ul>
-            </div>
-
-            {/* Quick FAQs */}
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 flex-1 overflow-y-auto">
-              <h3 className="text-[#001840] font-semibold mb-3 text-sm uppercase tracking-wider">Quick FAQs</h3>
-              <ul className="space-y-1.5">
-                {quickFAQs.map((q) => (
-                  <li key={q}>
-                    <button
-                      onClick={() => sendMessage(q)}
-                      className="w-full text-left text-xs text-[#102A71] hover:text-[#001840] hover:bg-[#FFFDF0] px-3 py-2 rounded-lg transition-colors duration-150 flex items-center gap-2 group"
-                    >
-                      <ChevronRight className="w-3 h-3 shrink-0 text-[#F5C400] group-hover:translate-x-0.5 transition-transform" />
-                      {q}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </aside>
-
-          {/* Chat Area */}
-          <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex gap-3 ${msg.from === "user" ? "flex-row-reverse" : ""}`}
-                >
-                  {/* Avatar */}
+      {/* Chat Container */}
+      <div className="flex-1 px-4 sm:px-6 lg:px-8 py-6 flex flex-col overflow-hidden">
+        <div className="max-w-6xl mx-auto w-full flex flex-col h-full">
+          
+          {/* Messages */}
+          <div 
+            ref={chatContainerRef}
+            className="flex-1 overflow-y-auto space-y-6 mb-6 pr-2"
+            style={{ scrollBehavior: 'smooth' }}
+          >
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex gap-3 ${msg.from === "user" ? "flex-row-reverse" : ""} animate-fadeIn`}
+              >
+                <div className="shrink-0">
                   <div
-                    className={`w-9 h-9 rounded-full shrink-0 flex items-center justify-center ${msg.from === "bot" ? "bg-[#102A71]" : "bg-[#F5C400]"
-                      }`}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg ${
+                      msg.from === "bot"
+                        ? "bg-gradient-to-br from-[#001840] to-[#102A71] text-[#F5C400]"
+                        : "bg-gradient-to-br from-[#F5C400] to-[#FFDC5F] text-[#001840]"
+                    }`}
                   >
-                    {msg.from === "bot" ? (
-                      <Bot className="w-5 h-5 text-white" />
-                    ) : (
-                      <User className="w-5 h-5 text-[#001840]" />
+                    {msg.from === "bot" ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
+                  </div>
+                </div>
+
+                <div className={`flex-1 max-w-[85%] sm:max-w-[75%] ${msg.from === "user" ? "flex justify-end" : ""}`}>
+                  <div
+                    className={`inline-block px-5 py-4 rounded-2xl shadow-md ${
+                      msg.from === "bot"
+                        ? msg.isError 
+                          ? "bg-red-50 border border-red-200 text-red-900"
+                          : "bg-white border border-gray-200 text-gray-800"
+                        : "bg-gradient-to-br from-[#001840] to-[#102A71] text-white"
+                    }`}
+                  >
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                      {msg.text}
+                      {msg.isTyping && <span className="inline-block w-1 h-4 bg-current ml-1 animate-pulse"></span>}
+                    </p>
+                    
+                    {msg.isComplete && (
+                      <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-gray-200/30">
+                        <span className="text-xs opacity-60">{msg.time}</span>
+                        {msg.from === "bot" && !msg.isError && (
+                          <button
+                            onClick={() => copyMessage(msg.text, msg.id)}
+                            className="flex items-center gap-1 text-xs opacity-60 hover:opacity-100 transition-opacity"
+                          >
+                            {copiedId === msg.id ? (
+                              <><Check className="w-3 h-3" /> Copied</>
+                            ) : (
+                              <><Copy className="w-3 h-3" /> Copy</>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {msg.from === "bot" && msg.chatLogId && !msg.isError && msg.isComplete && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        {!msg.feedbackGiven ? (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleFeedback(msg.id, true)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-green-50 hover:bg-green-100 text-green-700 rounded-lg transition-all hover:shadow-md font-medium"
+                            >
+                              <ThumbsUp className="w-3.5 h-3.5" />
+                              Helpful
+                            </button>
+                            <button
+                              onClick={() => handleFeedback(msg.id, false)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-all hover:shadow-md font-medium"
+                            >
+                              <ThumbsDown className="w-3.5 h-3.5" />
+                              Not Helpful
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-green-600 font-medium">Thank you for your feedback!</p>
+                        )}
+                      </div>
                     )}
                   </div>
+                </div>
+              </div>
+            ))}
 
-                  {/* Bubble */}
-                  <div className={`max-w-[75%] space-y-1 ${msg.from === "user" ? "items-end" : "items-start"} flex flex-col`}>
-                    <div
-                      className={`px-5 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-line ${msg.from === "bot"
-                          ? "bg-[#FFDC5F]/30 text-[#001840] rounded-tl-none border border-[#FFDC5F]/40"
-                          : "bg-[#102A71] text-[#FFFDF0] rounded-tr-none"
-                        }`}
-                    >
-                      {msg.text}
-                    </div>
-                    <span className="text-[10px] text-gray-400 px-1">{msg.time}</span>
+            {typing && (
+              <div className="flex gap-3 animate-fadeIn">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#001840] to-[#102A71] text-[#F5C400] flex items-center justify-center shadow-lg">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div className="bg-white border border-gray-200 px-5 py-4 rounded-2xl shadow-md">
+                  <div className="flex gap-1.5">
+                    <div className="w-2.5 h-2.5 bg-[#001840] rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></div>
+                    <div className="w-2.5 h-2.5 bg-[#001840] rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></div>
+                    <div className="w-2.5 h-2.5 bg-[#001840] rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></div>
                   </div>
                 </div>
-              ))}
+              </div>
+            )}
+            
+            <div ref={messagesEndRef} />
+          </div>
 
-              {/* Typing indicator */}
-              {typing && (
-                <div className="flex gap-3">
-                  <div className="w-9 h-9 rounded-full bg-[#102A71] flex items-center justify-center shrink-0">
-                    <Bot className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="bg-[#FFDC5F]/30 border border-[#FFDC5F]/40 px-5 py-3 rounded-2xl rounded-tl-none">
-                    <div className="flex gap-1.5 items-center h-4">
-                      <span className="w-2 h-2 bg-[#102A71]/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="w-2 h-2 bg-[#102A71]/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="w-2 h-2 bg-[#102A71]/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={bottomRef} />
+          {/* Suggested Questions */}
+          {suggestedQuestions.length > 0 && !typing && (
+            <div className="mb-4 animate-fadeIn">
+              <p className="text-xs font-semibold text-gray-600 mb-2">You might also want to know:</p>
+              <div className="flex flex-wrap gap-2">
+                {suggestedQuestions.map((q, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => sendMessage(q)}
+                    className="text-xs px-3 py-2 bg-white hover:bg-[#FFFDF0] border border-gray-200 hover:border-[#F5C400] rounded-lg text-gray-700 transition-all shadow-sm hover:shadow-md"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
             </div>
+          )}
 
-            {/* Quick FAQ chips (mobile) */}
-            <div className="md:hidden px-4 py-2 flex gap-2 overflow-x-auto border-t border-gray-100">
-              {quickFAQs.slice(0, 3).map((q) => (
-                <button
-                  key={q}
-                  onClick={() => sendMessage(q)}
-                  className="shrink-0 text-xs bg-[#FFFDF0] border border-[#FFDC5F] text-[#102A71] px-3 py-1.5 rounded-full hover:bg-[#FFDC5F]/30 transition-colors"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-
-            {/* Input */}
-            <div className="p-4 border-t border-gray-100 bg-[#FFFDF0]">
-              <form
-                onSubmit={(e) => { e.preventDefault(); sendMessage(input); }}
-                className="flex gap-3 items-center"
-              >
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask about admissions, requirements, campus…"
-                  className="flex-1 bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-[#001840] placeholder-gray-400 focus:outline-none focus:border-[#102A71] focus:ring-2 focus:ring-[#102A71]/10 transition"
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim() || typing}
-                  className="bg-[#F5C400] hover:bg-[#FFDC5F] disabled:opacity-50 disabled:cursor-not-allowed text-[#001840] w-11 h-11 rounded-xl flex items-center justify-center transition-colors shrink-0 shadow"
-                >
-                  <Send className="w-5 h-5" />
-                </button>
-              </form>
-              <p className="text-[10px] text-gray-400 text-center mt-2">
-                UniNav AI is for guidance only. Always verify with the Registrar's Office.
+          {/* Quick FAQs */}
+          {messages.length === 1 && (
+            <div className="mb-4 animate-fadeIn">
+              <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#F5C400]" />
+                Quick Questions:
               </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {quickFAQs.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => sendMessage(q)}
+                    disabled={typing}
+                    className="text-left px-4 py-3 bg-white hover:bg-[#FFFDF0] border border-gray-200 hover:border-[#F5C400] rounded-xl text-sm text-gray-700 transition-all group shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="flex items-center justify-between">
+                      <span className="line-clamp-1">{q}</span>
+                      <Send className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-[#F5C400]" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Input */}
+          <div className="bg-white border-2 border-gray-300 rounded-2xl p-3 shadow-xl">
+            <div className="flex gap-3">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyPress}
+                placeholder="Ask me anything about admission..."
+                className="flex-1 px-4 py-3 bg-transparent text-gray-800 placeholder-gray-400 focus:outline-none text-sm resize-none"
+                disabled={typing}
+                rows={1}
+                style={{ maxHeight: '120px' }}
+              />
+              <button
+                onClick={() => sendMessage(input)}
+                disabled={!input.trim() || typing}
+                className="bg-gradient-to-r from-[#001840] to-[#102A71] hover:from-[#102A71] hover:to-[#001840] disabled:from-gray-300 disabled:to-gray-300 text-white p-3 rounded-xl transition-all disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none"
+              >
+                {typing ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
+              </button>
             </div>
           </div>
         </div>

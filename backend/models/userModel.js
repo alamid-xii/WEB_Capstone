@@ -1,4 +1,4 @@
-
+﻿
 
       /*
     MIT License
@@ -29,7 +29,48 @@ import { sequelize } from "./db.js";
 
 export const User = sequelize.define("User", {
   name: { type: DataTypes.STRING, allowNull: false },
-  email: { type: DataTypes.STRING, allowNull: false },
-  password: { type: DataTypes.STRING, allowNull: false }
+  email: { type: DataTypes.STRING, allowNull: false, unique: true },
+  password: { type: DataTypes.STRING, allowNull: false },
+  role: { 
+    type: DataTypes.ENUM('student', 'registrar', 'admin'), 
+    defaultValue: 'student',
+    allowNull: false
+  },
+  department: { 
+    type: DataTypes.STRING(100), 
+    allowNull: true,
+    comment: 'Department for registrar users (e.g., Admissions, Records)'
+  },
+  isActive: { 
+    type: DataTypes.BOOLEAN, 
+    defaultValue: true,
+    allowNull: false
+  },
+  isVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false
+  },
+  verificationToken: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
+  verificationExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  }
+}, {
+  tableName: 'users',
+  timestamps: true,
+  comment: 'User accounts with role-based access control (student, registrar, admin)'
 });
+
 export { sequelize }; 

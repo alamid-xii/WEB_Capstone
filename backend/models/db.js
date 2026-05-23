@@ -26,7 +26,9 @@
     
 import { Sequelize } from "sequelize";
 
-export const sequelize = new Sequelize("backend", "root", "", {
-  host: "localhost",
-  dialect: "mysql"
+// Use SQLite for development (no password needed!)
+export const sequelize = new Sequelize({
+  dialect: 'sqlite',
+  storage: './database.sqlite',
+  logging: false
 });

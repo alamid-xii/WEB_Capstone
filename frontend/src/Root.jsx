@@ -7,7 +7,8 @@ export function Root() {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
-      <div className="flex-1">
+      {/* pt-16 lg:pt-20 offsets the fixed navbar height */}
+      <div className="flex-1 pt-16 lg:pt-20">
         <Outlet />
       </div>
       <Footer />

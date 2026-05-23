@@ -1,4 +1,4 @@
-import { MessageCircle, FileText, Smartphone, CheckCircle } from "lucide-react";
+﻿import { MessageCircle, FileText, Smartphone, CheckCircle } from "lucide-react";
 
 export function HowItWorks() {
   const steps = [
@@ -6,7 +6,7 @@ export function HowItWorks() {
       number: "01",
       icon: MessageCircle,
       title: "Ask Questions",
-      description: "Start a conversation with the UniNav chatbot and ask any admission-related questions in natural language"
+      description: "Start a conversation with the GabAI chatbot and ask any admission-related questions in natural language"
     },
     {
       number: "02",
@@ -17,8 +17,8 @@ export function HowItWorks() {
     {
       number: "03",
       icon: Smartphone,
-      title: "Explore with AR",
-      description: "Use your smartphone to explore the campus virtually with real-time AR navigation and building information"
+      title: "Explore with Virtual Tour",
+      description: "Use the 360° virtual campus tour to explore buildings, offices, and facilities before you even arrive"
     },
     {
       number: "04",

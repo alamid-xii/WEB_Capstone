@@ -1,5 +1,5 @@
-
-  /*
+﻿
+/*
     MIT License
     
     Copyright (c) 2025 Christian I. Cabrera || XianFire Framework
@@ -26,17 +26,93 @@
     
 import express from "express";
 import { homePage } from "../controllers/homeController.js";
+import { loginPage, registerPage, forgotPasswordPage, dashboardPage, loginUser, registerUser, logoutUser, verifyEmail, resendVerification } from "../controllers/authController.js";
+import { sendMessage, rateFeedback } from "../controllers/chatController.js";
+import { getAllBuildings, getBuildingById, createBuilding, updateBuilding, deleteBuilding, upload } from "../controllers/buildingController.js";
+import { requireAdmin, getDashboardStats, getAllFAQs, createFAQ, updateFAQ, deleteFAQ, getAllUsers, updateUser, deleteUser } from "../controllers/adminController.js";
+import { requireRegistrar, requireAdminOrRegistrar } from "../middleware/auth.js";
+import enrollmentRoutes from "./enrollmentRoutes.js";
+import adminEnrollmentRoutes from "./adminEnrollmentRoutes.js";
+import registrarRoutes from "./registrarRoutes.js";
+import subjectSelectionRoutes from "./subjectSelectionRoutes.js";
+import sectionRoutes from "./sectionRoutes.js";
+import {
+  getPrograms, getSubjects, createSubject, updateSubject, deleteSubject,
+  getSections, createSection, updateSection, deleteSection,
+  getSchoolYears, getActiveSchoolYear, createSchoolYear, setActiveSchoolYear
+} from "../controllers/academicController.js";
+
 const router = express.Router();
+
+// Public routes
 router.get("/", homePage);
-
-import { loginPage, registerPage, forgotPasswordPage, dashboardPage, loginUser, registerUser, logoutUser } from "../controllers/authController.js";
-
 router.get("/login", loginPage);
 router.post("/login", loginUser);
 router.get("/register", registerPage);
 router.post("/register", registerUser);
 router.get("/forgot-password", forgotPasswordPage);
-router.get("/dashboard", dashboardPage);
 router.get("/logout", logoutUser);
+
+// Auth API routes (for React frontend)
+router.post("/api/auth/login", loginUser);
+router.post("/api/auth/register", registerUser);
+router.post("/api/auth/logout", logoutUser);
+router.post("/api/auth/verify-otp", verifyEmail);
+router.post("/api/auth/resend-verification", resendVerification);
+
+// Protected routes
+router.get("/dashboard", dashboardPage);
+
+// Chat API
+router.post("/api/chat/message", sendMessage);
+router.post("/api/chat/feedback", rateFeedback);
+
+// Buildings API
+router.get("/api/buildings", getAllBuildings);
+router.get("/api/buildings/:id", getBuildingById);
+
+// Admin API (protected)
+router.get("/api/admin/stats", requireAdmin, getDashboardStats);
+router.get("/api/admin/faqs", requireAdmin, getAllFAQs);
+router.post("/api/admin/faqs", requireAdmin, createFAQ);
+router.put("/api/admin/faqs/:id", requireAdmin, updateFAQ);
+router.delete("/api/admin/faqs/:id", requireAdmin, deleteFAQ);
+router.get("/api/admin/users", requireAdmin, getAllUsers);
+router.put("/api/admin/users/:id", requireAdmin, updateUser);
+router.delete("/api/admin/users/:id", requireAdmin, deleteUser);
+router.post("/api/admin/buildings", requireAdmin, upload.single("photo360"), createBuilding);
+router.put("/api/admin/buildings/:id", requireAdmin, upload.single("photo360"), updateBuilding);
+router.delete("/api/admin/buildings/:id", requireAdmin, deleteBuilding);
+
+// Enrollment API (protected)
+router.use("/api/enrollments", enrollmentRoutes);
+
+// Subject Selection API (protected)
+router.use("/api/enrollments", subjectSelectionRoutes);
+
+// Admin Enrollment API (protected - admin only)
+router.use("/api/admin", adminEnrollmentRoutes);
+
+// Registrar API (protected - registrar only)
+router.use("/api/registrar", registrarRoutes);
+
+// Section Management API (protected - admin or registrar)
+router.use("/api/admin/sections", sectionRoutes);
+router.use("/api/registrar/sections", sectionRoutes);
+
+// Academic API - public read, admin write
+router.get("/api/academic/programs", getPrograms);
+router.get("/api/academic/subjects", getSubjects);
+router.get("/api/academic/school-years", getSchoolYears);
+router.get("/api/academic/school-years/active", getActiveSchoolYear);
+router.post("/api/admin/academic/subjects", requireAdmin, createSubject);
+router.put("/api/admin/academic/subjects/:id", requireAdmin, updateSubject);
+router.delete("/api/admin/academic/subjects/:id", requireAdmin, deleteSubject);
+router.get("/api/admin/academic/sections", requireAdmin, getSections);
+router.post("/api/admin/academic/sections", requireAdmin, createSection);
+router.put("/api/admin/academic/sections/:id", requireAdmin, updateSection);
+router.delete("/api/admin/academic/sections/:id", requireAdmin, deleteSection);
+router.post("/api/admin/academic/school-years", requireAdmin, createSchoolYear);
+router.put("/api/admin/academic/school-years/:id/activate", requireAdmin, setActiveSchoolYear);
 
 export default router;
