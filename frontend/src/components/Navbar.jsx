@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { MapPin, Menu, X, ArrowRight, LogIn, LogOut, User, ChevronDown } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
@@ -66,11 +66,10 @@ export function Navbar() {
                 <Link
                   key={link.to}
                   to={link.to}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150 ${
-                    active
-                      ? "bg-[#102A71] text-[#FFDC5F]"
-                      : "text-[#FFFDF0] hover:bg-[#102A71]/60 hover:text-[#FFDC5F]"
-                  }`}
+                  className={`px-4 py-3 rounded-xl text-sm font-medium transition-colors duration-150 ${active
+                    ? "bg-[#102A71] text-[#FFDC5F]"
+                    : "text-[#FFFDF0] hover:bg-[#102A71]/60 hover:text-[#FFDC5F]"
+                    }`}
                 >
                   {link.label}
                 </Link>
@@ -85,7 +84,7 @@ export function Navbar() {
               <div className="relative">
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="hidden md:flex items-center gap-2 bg-[#102A71] hover:bg-[#102A71]/80 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150"
+                  className="hidden lg:flex items-center gap-2 bg-[#102A71] hover:bg-[#102A71]/80 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150"
                 >
                   <div className="w-7 h-7 bg-[#F5C400] rounded-full flex items-center justify-center shrink-0">
                     <User className="w-4 h-4 text-[#001840]" />
@@ -127,7 +126,7 @@ export function Navbar() {
               <>
                 <Link
                   to="/login"
-                  className="hidden md:flex items-center gap-2 border border-[#FFDC5F] text-[#FFDC5F] hover:bg-[#FFDC5F] hover:text-[#001840] px-4 py-2 rounded-lg font-semibold text-sm transition-colors duration-150"
+                  className="hidden lg:flex items-center gap-2 border border-[#FFDC5F] text-[#FFDC5F] hover:bg-[#FFDC5F] hover:text-[#001840] px-4 py-2 rounded-lg font-semibold text-sm transition-colors duration-150"
                 >
                   <LogIn className="w-4 h-4" />
                   Login
@@ -168,11 +167,10 @@ export function Navbar() {
                   key={link.to}
                   to={link.to}
                   onClick={() => setOpen(false)}
-                  className={`px-4 py-3 rounded-lg text-sm font-medium transition-colors duration-150 ${
-                    active
-                      ? "bg-[#102A71] text-[#FFDC5F]"
-                      : "text-[#FFFDF0] hover:bg-[#102A71]/60"
-                  }`}
+                  className={`px-4 py-4.5 rounded-lg text-sm font-medium transition-colors duration-150 ${active
+                    ? "bg-[#102A71] text-[#FFDC5F]"
+                    : "text-[#FFFDF0] hover:bg-[#102A71]/60"
+                    }`}
                 >
                   {link.label}
                 </Link>

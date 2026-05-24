@@ -12,7 +12,7 @@ export function Hero() {
         <img
           src={heroImage}
           alt="Dr. Angel Francisco Hall - Eastern Mindoro College"
-          className="w-full h-full object-cover object-center"
+          className="w-full h-full object-cover object-top scale-[1.5] md:scale-125 origin-top transition-transform duration-700"
         />
         {/* Dark overlay for readability */}
         <div className="absolute inset-0 bg-[#001840] opacity-80" />
@@ -98,7 +98,7 @@ export function Hero() {
       <div className="absolute bottom-16 right-8 lg:right-16 z-10 hidden md:block">
         <div className="bg-[#FFFDF0] p-5 rounded-xl shadow-2xl max-w-xs border border-[#F5C400]/30">
           <div className="flex items-start gap-3">
-            <div className="bg-[#F5C400] p-3 rounded-lg shrink-0"> 
+            <div className="bg-[#F5C400] p-3 rounded-lg shrink-0">
               <MapPin className="w-5 h-5 text-[#001840]" />
             </div>
             <div>
@@ -111,7 +111,7 @@ export function Hero() {
 
       {/* Wave Divider */}
       <div className="absolute bottom-0 left-0 right-0 z-10">
-        <svg viewBox="0 0 1440 100" className="w-full h-auto" preserveAspectRatio="none">
+        <svg viewBox="0 0 1440 100" className="w-full h-auto min-h-[100px] md:min-h-[120px]" preserveAspectRatio="none">
           <path
             fill="#FFFDF0"
             d="M0,64L80,69.3C160,75,320,85,480,80C640,75,800,53,960,48C1120,43,1280,53,1360,58.7L1440,64L1440,100L1360,100C1280,100,1120,100,960,100C800,100,640,100,480,100C320,100,160,100,80,100L0,100Z"
